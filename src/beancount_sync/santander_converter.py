@@ -1,0 +1,94 @@
+from operator import abs
+from beancount.core.position import Decimal
+from model import *
+from beancount_util import *
+
+import logging
+
+from santander import SantanderTransaction
+from beancount_sync.beancount_sync import BeancountTransaction
+
+
+class SantanderConverter:
+
+    def __init___(self, config: Config):
+        self.config = config
+
+    def translate_to_beancount(self, tx: SantanderTransaction) -> BeancountTransaction:
+        cash_account = self.config.santanderCashAccount
+        flagged = False
+
+        other_account, ignore = self._get_santander_account(tx)
+        if not other_account:
+            logging.warning("Failed to find santander account for transaction %s (created=%s, amount=%s)", tx, tx.date,
+                            tx.amount)
+            flagged = True
+            other_account = self.config.defaultIncomeAccount if tx.amount >= 0 else self.config.defaultExpenseAccount
+        if ignore:
+            logging.info("Skipping transaction as ignored %s", tx)
+            return None
+
+        if tx.amount >= 0:
+            # This is money into the monzo cash, hence we are crediting the cash account
+            credit_amount = create_amount_from_decimal(tx.amount)
+            debit_account = other_account
+            credit_account = cash_account
+        else:
+            # Spending money from the cash account
+            credit_amount = create_amount_from_decimal(tx.amount * -1)
+            debit_account = cash_account
+            credit_account = other_account
+
+        return BeancountTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount.number,
+                                    credit_account=credit_account,
+                                    debit_account=debit_account, payee=tx.account_name or "",
+                                    description=tx.description, flagged=flagged,
+                                    metadata=tx.model_dump_json())
+
+    def _get_santander_account(self, tx: SantanderTransaction) -> tuple[str | None, bool]:
+        for rule in self.config.santanderAccountRules:
+            if SantanderConverter._santander_rule_matches(rule, tx):
+                # We specify rule.ignore for postings created on monzo side to prevent duplicates when transferring 
+                # Proper accounting rules would be to post both transfers, but we are lazy and only do one
+                return rule.accountName, rule.ignore or False
+        return None, False
+
+    @staticmethod
+    def _santander_rule_matches(rule: SantanderAccountRule, tx: SantanderTransaction) -> bool:
+        # creditOnly means we only care about money out, so ignore money in
+        if rule.creditOnly and tx.amount >= 0:
+            return False
+        if rule.debitOnly and tx.amount < 0:
+            return False
+
+        if rule.type and rule.type != tx.type:
+            return False
+
+        if rule.accountMatches:
+            if not tx.account_name:
+                return False
+            account_lower = tx.account_name.lower()
+            found = False
+            for match in rule.accountMatches:
+                if match.lower() in account_lower:
+                    found = True
+            if not found:
+                return False
+
+        found = False
+        if rule.referenceMatches:
+            if not tx.reference:
+                return False
+            reference_lower = tx.reference.lower()
+            for match in rule.referenceMatches:
+                if match.lower() in reference_lower:
+                    found = True
+            if not found:
+                return False
+
+        #  useful for strange things as we get relativly little info compared to Monzo
+        amount_check = abs(rule.amount or 0, 0)
+        if amount_check > 0:
+            if Decimal(amount_check) != abs(tx.amount):
+                return False
+        return True  # innocent until proven guilty
