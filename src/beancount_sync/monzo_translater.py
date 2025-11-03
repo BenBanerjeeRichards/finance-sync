@@ -49,7 +49,7 @@ class MonzoTranslater:
         return BeancountTransaction(external_id=tx.id, tx_date=tx_date, amount=amount.number,
                                     credit_account=credit_account,
                                     debit_account=debit_account, payee=payee, description=description, flagged=flagged,
-                                    metadata=tx.model_dump_json())
+                                    metadata=tx.model_dump_json(), source="monzo")
 
     def _get_transaction_accounts(self, monzo_tx: MonzoTransaction) -> tuple[str | None, MonzoAccountRule | None]:
         for rule in self.config.accountRules:

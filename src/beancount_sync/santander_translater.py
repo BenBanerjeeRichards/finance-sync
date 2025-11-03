@@ -9,9 +9,9 @@ from santander import SantanderTransaction
 from beancount_sync.beancount_sync import BeancountTransaction
 
 
-class SantanderConverter:
+class SantanderTranslater:
 
-    def __init___(self, config: Config):
+    def __init__(self, config: Config):
         self.config = config
 
     def translate_to_beancount(self, tx: SantanderTransaction) -> BeancountTransaction:
@@ -43,11 +43,11 @@ class SantanderConverter:
                                     credit_account=credit_account,
                                     debit_account=debit_account, payee=tx.account_name or "",
                                     description=tx.description, flagged=flagged,
-                                    metadata=tx.model_dump_json())
+                                    metadata=tx.model_dump_json(), source="santander")
 
     def _get_santander_account(self, tx: SantanderTransaction) -> tuple[str | None, bool]:
         for rule in self.config.santanderAccountRules:
-            if SantanderConverter._santander_rule_matches(rule, tx):
+            if SantanderTranslater._santander_rule_matches(rule, tx):
                 # We specify rule.ignore for postings created on monzo side to prevent duplicates when transferring 
                 # Proper accounting rules would be to post both transfers, but we are lazy and only do one
                 return rule.accountName, rule.ignore or False
@@ -86,8 +86,8 @@ class SantanderConverter:
             if not found:
                 return False
 
-        #  useful for strange things as we get relativly little info compared to Monzo
-        amount_check = abs(rule.amount or 0, 0)
+        # useful for strange things as we get relativly little info compared to Monzo
+        amount_check = abs(rule.amount or 0)
         if amount_check > 0:
             if Decimal(amount_check) != abs(tx.amount):
                 return False

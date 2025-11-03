@@ -6,11 +6,10 @@ from pydantic import BaseModel
 from typing import TypeVar, Type, Union
 import logging
 
-
 BUCKET = "transactions"
 STORE_FILE = "monzo-store.json"
 GC_STORE_FILE = "gc-store.json"
-TXS_FILE = "transactions.json"
+MONZO_TX_FILE = "transactions.json"
 SANTANDER_TX_FILE = "santander-transactions.json"
 
 class ObjectNotFound(Exception):
@@ -53,21 +52,11 @@ def write_gc_store(minio_client: minio.Minio, store: GcStore):
     write_file(minio_client, BUCKET, GC_STORE_FILE, store.json())
 
 
-def load_transactions(minio_client: minio.Minio) -> list[Transaction]:
-    txs = load_file(minio_client, BUCKET, TXS_FILE)
-    return [Transaction(**x) for x in txs]
-
-
-def write_transactions(minio_clinet: minio.Minio, transactions: list[Transaction]) -> None:
-    js = json.dumps([t.model_dump() for t in transactions])
-    write_file(minio_clinet, BUCKET, TXS_FILE, js)
-
-
 T = TypeVar("T", bound=BaseModel)
 
 class Store:
 
-    def __init__(self, minio_client: minio.Minio, bucket: str):
+    def __init__(self, minio_client: minio.Minio, bucket: str = BUCKET):
         self.minio_client = minio_client
         self.bucket = bucket
 
@@ -75,11 +64,18 @@ class Store:
         js = load_file(self.minio_client, self.bucket, name)
         return t(**js)
 
-    def write(self, name: str, contents: Union[BaseModel, str], bucket=None) -> None:
+    def load_list(self, name: str, t: Type[T]) -> list[T]:
+        js = load_file(self.minio_client, self.bucket, name)
+        return [t(**x) for x in js]
+
+
+    def write(self, name: str, contents: Union[BaseModel, str, list[BaseModel]], bucket=None) -> None:
         bucket = self.bucket if not bucket else bucket
         match contents:
             case str():
                 s = contents
             case BaseModel():
-                s = contents.json()
+                s = contents.model_dump_json()
+            case list():
+                s = json.dumps([x.model_dump_json() for x in contents])
         write_file(self.minio_client, bucket, name, s)

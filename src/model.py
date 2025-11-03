@@ -80,7 +80,7 @@ class Settings(BaseModel):
     santander_discord_webhook: str
 
 
-class SantanderTransaction(BaseModel):
+class GcSantanderTransaction(BaseModel):
     transaction_id: str
     description: str
     counterparty_name: Optional[str]  = None
@@ -91,7 +91,7 @@ class SantanderTransaction(BaseModel):
 
 
 class SantanderTransactions(BaseModel):
-    transactions: list[SantanderTransaction]
+    transactions: list[GcSantanderTransaction]
 
 
 class MonzoAccountRule(BaseModel):
@@ -146,3 +146,19 @@ class Config(BaseModel):
     gocardless: GoCardlessConfig
 
     model_config = {"extra": "forbid"}
+
+
+class MonzoSyncMessage(BaseModel):
+    past_days: int
+
+
+class MonzoUpdateNotesMessage(BaseModel):
+    transactionId: str
+    note: str
+
+
+class NotifyExpiringMessage(BaseModel):
+    name: str
+    url: Optional[str] = None
+    days: int | None = None
+

@@ -1,9 +1,13 @@
+from minio import Minio
 from pydantic import BaseModel
 import logging
-from model import Config, Transaction, Merchant, Counterparty, Tab, Attachment
+from model import Config, Transaction, Merchant, Counterparty, Tab, Attachment, TransactionUpdate
 import monzo
 import re
 import datetime
+
+from monzo import MonzoClient
+from storage import Store, MONZO_TX_FILE
 
 
 class MonzoConfig(BaseModel):
@@ -16,11 +20,10 @@ class MonzoConfig(BaseModel):
 
 class MonzoImporter:
 
-    def __init__(self, config: Config, monzo_config: MonzoConfig):
-        self.config = config
-        self.monzo_client = monzo.MonzoClient(monzo_config.access_token, monzo_config.refresh_token,
-                                              monzo_config.monzo_client_id, monzo_config.monzo_client_secret,
-                                              monzo_config.monzo_account_id)
+    def __init__(self, monzo_client: MonzoClient, minio_client: Minio):
+        self.monzo_client = monzo_client
+        self.minio_client = minio_client
+        self.store = Store(minio_client)
 
     def import_transactions(self, since: datetime.datetime):
         logging.info("Syncing transactions since=%s", since)
@@ -31,6 +34,58 @@ class MonzoImporter:
         logging.info("Got %s transactions from monzo", len(synced_monzo_transactions))
         synced_transactions = [MonzoImporter.monzo_to_transaction(tx) for tx in synced_monzo_transactions]
         created, updated = self._write_transactions_to_storage(synced_transactions)
+
+    def update_notes(self, updates: list[TransactionUpdate]):
+        # Why not write to monzo and then re-sync?
+        # Because we can only get last 90 days from monzo. Therefore, this would limit us to the past few months
+        # Instead we can update notes and assume monzo sync will work
+        logging.info("Updating %s transactions with notes", len(updates))
+        transactions = self.store.load_list(MONZO_TX_FILE, Transaction)
+
+        update_transaction_ids = []
+        for update in updates:
+            tx = [tx for tx in transactions if tx.id == update.transactionId]
+            tx = None if not tx else tx[0]
+            if not tx:
+                logging.warning("Failed to find transaction for note update %s", update)
+                continue
+            tx.notes = update.note
+            tx.tags = MonzoImporter.get_tags_from_string(update.note)
+            update_transaction_ids.append(tx.id)
+
+        self.store.write(MONZO_TX_FILE, transactions)
+
+        for update in updates:
+            if update.transactionId in update_transaction_ids:
+                self.monzo_client.set_transaction_notes(update.transactionId, update.note)
+
+    def _write_transactions_to_storage(self, synced_transactions: list[Transaction]) -> tuple[list[Transaction], list[Transaction]]:
+        synced_id_to_tx = {t.id: t for t in synced_transactions}
+        new_stored_transactions = []
+        updated = []
+        created =[]
+        total_unchanged = 0
+
+        stored_transactions = self.store.load_list(MONZO_TX_FILE, Transaction)
+
+        for stored_tx in stored_transactions:
+            if stored_tx.id in synced_id_to_tx:
+                new_tx = synced_id_to_tx[stored_tx.id]
+                if new_tx != stored_tx:
+                    # Only return updated if something has changed
+                    updated.append(synced_id_to_tx[stored_tx.id])
+                new_stored_transactions.append(synced_id_to_tx[stored_tx.id])
+                del synced_id_to_tx[stored_tx.id]
+            else:
+                new_stored_transactions.append(stored_tx)
+                total_unchanged += 1
+        for synced_tx_id in synced_id_to_tx:
+            new_stored_transactions.append(synced_id_to_tx[synced_tx_id])
+            created.append(synced_id_to_tx[synced_tx_id])
+
+        logging.info("Syncing transactions to minio. updated=%s created=%s unchanged=%s", len(updated), len(created), total_unchanged)
+        self.store.write(MONZO_TX_FILE, new_stored_transactions)
+        return created, updated
 
     @staticmethod
     def get_tags_from_string(notes: str) -> list[str]:

@@ -5,7 +5,7 @@ from minio import Minio
 
 from gocardless.gocardless import GoCardlessClient, GcTranscation
 from gocardless.gc_connection import MissingTransactionId
-from model import Config, GcStore, SantanderTransactions, SantanderTransaction
+from model import Config, GcStore, SantanderTransactions, GcSantanderTransaction
 from storage import GC_STORE_FILE, SANTANDER_TX_FILE, ObjectNotFound, Store
 import logging
 
@@ -15,7 +15,7 @@ class SantanderImporter:
         self.config = config
         self.client = GoCardlessClient(gc_secret_id, gc_secret_key, self.config.gocardless.insitutionId,
                                           self.config.gocardless.redirectUri)
-        self.store = Store(minio_client, "transactions")
+        self.store = Store(minio_client)
 
     def import_transactions(self):
         self.client.get_new_tokens()
@@ -48,7 +48,7 @@ class SantanderImporter:
         self.store.write(SANTANDER_TX_FILE, SantanderTransactions(transactions=new_transactions))
 
     @staticmethod
-    def _gc_to_model(tx: GcTranscation, booked: bool) -> SantanderTransaction:
+    def _gc_to_model(tx: GcTranscation, booked: bool) -> GcSantanderTransaction:
         if tx.transactionAmount.currency != "GBP":
             logging.error("Failed to process transaction %s", tx)
             raise ValueError("Unsupported currency " + tx.transactionAmount.currency)
@@ -56,7 +56,7 @@ class SantanderImporter:
             logging.error("Failed to process transaction %s", tx)
             raise MissingTransactionId()    # sometimes no tx id until booking?
 
-        return SantanderTransaction(
+        return GcSantanderTransaction(
             transaction_id=tx.transactionId,
             description=tx.remittanceInformationUnstructured,
             # NB: debtorName is confusing - really it is the counterparty name as debtorName is

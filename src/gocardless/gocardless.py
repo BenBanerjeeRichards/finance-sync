@@ -101,7 +101,7 @@ class GoCardlessClient:
         return resp_json["access"], resp_json["refresh"]
 
     def get_institutions(self) -> dict:
-        logging.info("Gettting all insutitions")
+        logging.info("Getting all institutions")
         resp = requests.get(GC_BASE + "institutions/?country=gb", headers={
             "Authorization": f"Bearer {self.access}"
         })
@@ -110,7 +110,7 @@ class GoCardlessClient:
         return resp_json
 
     def get_requisitions(self) -> list[GcGetRequisitionsResponse]:
-        logging.info("Gettting all requisitions")
+        logging.info("Getting all requisitions")
         url = GC_BASE + "requisitions/"
         reqs = []
         while url is not None:

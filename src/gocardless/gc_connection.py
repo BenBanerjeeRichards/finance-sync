@@ -1,13 +1,9 @@
-from gocardless.gocardless import GcTranscation, GoCardlessClient
-from model import GcStore, SantanderTransaction, SantanderTransactions, Config
-from storage import ObjectNotFound, Store, SANTANDER_TX_FILE, GC_STORE_FILE
+from gocardless.gocardless import GoCardlessClient
+from model import GcStore, Config
+from storage import Store, GC_STORE_FILE
 import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
-from decimal import Decimal
-import datetime
-import processor
-import santander
 
 class MissingTransactionId(Exception):
     pass

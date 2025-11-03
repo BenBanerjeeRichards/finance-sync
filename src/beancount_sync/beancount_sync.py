@@ -28,6 +28,7 @@ class BeancountTransaction(BaseModel):
     # the full data from the source of this transaction: e.g. monzo api data
     # can be used for more granular information
     metadata: dict = {}
+    source: str = ""
 
 
 class BadTransactionError(Exception):

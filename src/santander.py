@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 import re
 import logging
-from model import SantanderTransaction as GcSantanderTransaction
+from model import GcSantanderTransaction as GcSantanderTransaction
 
 from typing import Optional
 
