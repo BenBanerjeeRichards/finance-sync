@@ -1,6 +1,7 @@
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
-
+from notification.notifier import Notifier
+from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from importer.santander_import import SantanderImporter
 from model import Settings
 import os
@@ -9,7 +10,6 @@ import pika
 import logging
 
 from monzo import MonzoClient
-from notification.notifier import Notifier
 from handler import Handler
 from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
@@ -18,8 +18,6 @@ from storage import Store, load_monzo_store
 from notification.discord import DiscordClient
 from model import Config
 
-EXCHANGE_TX_UPDATED = "transaction.updated"
-EXCHANGE_TX_CREATED = "transaction.created"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -80,6 +78,7 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
 
 
 def main():
+
     # settings = env variables (mostly secrets)
     # config = non-secret config from yaml file
     settings = load_settings()
@@ -105,9 +104,9 @@ def main():
 
     def start_pika():
         pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
-        handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer, pika_connection,
+        message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer, pika_connection,
                           notifier)
-        listen_for_updates(pika_connection, handler)
+        listen_for_updates(pika_connection, message_handler)
 
     def start_gc_sync():
         gc_connection.serve()

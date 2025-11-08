@@ -1,7 +1,6 @@
 from operator import abs
-from beancount.core.position import Decimal
 from model import *
-from beancount_util import *
+from beancount_sync.beancount_util import create_amount_from_decimal
 
 import logging
 
@@ -14,7 +13,7 @@ class SantanderTranslater:
     def __init__(self, config: Config):
         self.config = config
 
-    def translate_to_beancount(self, tx: SantanderTransaction) -> BeancountTransaction:
+    def translate_to_beancount(self, tx: SantanderTransaction) -> BeancountTransaction | None:
         cash_account = self.config.santanderCashAccount
         flagged = False
 
@@ -43,7 +42,7 @@ class SantanderTranslater:
                                     credit_account=credit_account,
                                     debit_account=debit_account, payee=tx.account_name or "",
                                     description=tx.description, flagged=flagged,
-                                    metadata=tx.model_dump_json(), source="santander")
+                                    metadata=tx.model_dump(), source="santander")
 
     def _get_santander_account(self, tx: SantanderTransaction) -> tuple[str | None, bool]:
         for rule in self.config.santanderAccountRules:

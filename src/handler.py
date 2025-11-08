@@ -22,16 +22,30 @@ from pika.adapters.blocking_connection import  BlockingConnection
 def rmq_handler(body_type: type[BaseModel] | None = None):
     def do_decorate(message_handler):
         @wraps(message_handler)
-        def handle(ch, method, properties, body):
+        def handle(*args):
+            if len(args) == 4:
+                ch, method, properties, body = args
+                self = None
+            elif len(args) == 5:
+                self, ch, method, properties, body = args
+            else:
+                raise RuntimeError(f"Invalid number of arguments to rmq_handler, expected 4 or 5, got {len(args)}: {args}")
+
+            def self_aware_handler(f, *inner_args):
+                if self:
+                    return f(self, *inner_args)
+                else:
+                    return f(*inner_args)
+
             try:
                 logging.info("Got message for handler %s", message_handler.__name__)
                 if body_type is None:
-                    return message_handler()
+                    return self_aware_handler(message_handler)
                 parsed_json = json.loads(body.decode())
                 if isinstance(parsed_json, list):
-                    return message_handler([body_type(**item) for item in parsed_json])
+                    return self_aware_handler(message_handler, [body_type(**item) for item in parsed_json])
                 else:
-                    return message_handler(body_type(**parsed_json))
+                    return self_aware_handler(message_handler, body_type(**parsed_json))
             except:
                 logging.exception("Failed to handle %s message", message_handler.__name__)
 
@@ -67,20 +81,20 @@ class Handler:
         self.monzo_importer.update_notes(updates)
         sync_monzo_ledger(self.config, self.store, self.beancount_sync)
 
-    @rmq_handler
+    @rmq_handler()
     def on_monzo_refresh_token(self):
         logging.info("Refreshing monzo token")
         access, refresh = self.monzo_client.get_access_token()
         new_store = MonzoStore(access_token=access, refresh_token=refresh)
         write_monzo_store(self.minio_client, new_store)
 
-    @rmq_handler
+    @rmq_handler()
     def on_update_ledger(self):
         sync_monzo_ledger(self.config, self.store, self.beancount_sync)
         sync_santander_ledger(self.config, self.store, self.beancount_sync)
 
 
-    @rmq_handler
+    @rmq_handler()
     def on_santander_sync_transactions(self):
         self.santander_import.import_transactions()
         expires_in = self.santander_import.days_requisitions_expiring_in()
@@ -98,7 +112,8 @@ class Handler:
 def sync_santander_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
     santander_transactions = store.load(SANTANDER_TX_FILE, SantanderTransactions).transactions
     translater = SantanderTranslater(config)
-    ledger_transactions = [translater.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
+    mapped_transactions = [translater.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
+    ledger_transactions = [tx for tx in mapped_transactions if tx]
     beancount_sync.sync(config.santanderBeanFileName, ledger_transactions)
 
 def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):

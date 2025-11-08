@@ -2,9 +2,10 @@ from datetime import date
 from pydantic import BaseModel
 import logging
 
-from main import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
+from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from model import Config
-from src.beancount_sync.beancount_util import *
+from beancount_sync.beancount_util import new_posting, create_amount_from_decimal, new_transaction, \
+    transactions_equal
 from storage import write_file
 import minio
 from beancount.core.data import Transaction
@@ -87,18 +88,21 @@ class BeancountFile:
             if not ext_id:
                 logging.warning("No external id found on transaction %s", e)
                 continue
+            if not isinstance(e, Transaction):
+                logging.info("Invalid transaction %s", e)
+                continue
             self.entries_by_id[ext_id] = e
         logging.info("Loaded %s entries from file", len(self.entries_by_id.keys()))
 
     def add_or_update(self, tx: BeancountTransaction) -> Literal['new', 'updated', 'none']:
         existing = self.entries_by_id.get(tx.external_id)
-        status = 'new'
         if existing:
             # This is an update: we can only update payee or description
             if len(existing.postings) != 2:
                 raise BadTransactionError(
                     f"Only transactions with two postings supported, id {tx.external_id} has {len(existing.postings)}: {existing}")
-            if abs(existing.postings[0].units.number) != abs(tx.amount):
+            tx_units = existing.postings[0].units
+            if not tx_units or abs(tx_units.number or 0) != abs(tx.amount):
                 raise BadTransactionError(
                     f"Can not update amount on transaction: existing is {existing.postings[0].units} and new is {tx.amount}. TX {tx.external_id} {existing}")
             if tx.tx_date != existing.date:
@@ -111,7 +115,7 @@ class BeancountFile:
         new_tx = new_transaction(date=tx.tx_date, flag="!" if tx.flagged else "*",
                                  postings=[credit_posting, debit_posting], payee=tx.payee, narration=tx.description,
                                  meta={"external_id": tx.external_id})
-        status = 'none' if transactions_equal(new_tx, existing) else ('updated' if existing is not None else 'new')
+        status: Literal['none', 'updated', 'new'] = 'none' if transactions_equal(new_tx, existing) else ('updated' if existing is not None else 'new')
 
         if status == 'updated':
             logging.info("Updated: old=%s new=%s", existing, new_tx)

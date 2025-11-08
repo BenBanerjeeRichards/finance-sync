@@ -4,5 +4,4 @@ samples
 config.yml
 Makefile
 *.md
-*.txt
 .idea

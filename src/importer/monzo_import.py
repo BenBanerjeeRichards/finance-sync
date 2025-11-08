@@ -44,8 +44,8 @@ class MonzoImporter:
 
         update_transaction_ids = []
         for update in updates:
-            tx = [tx for tx in transactions if tx.id == update.transactionId]
-            tx = None if not tx else tx[0]
+            found_txs = [tx for tx in transactions if tx.id == update.transactionId]
+            tx = None if not found_txs else found_txs[0]
             if not tx:
                 logging.warning("Failed to find transaction for note update %s", update)
                 continue

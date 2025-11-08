@@ -1,7 +1,7 @@
 from model import Transaction as MonzoTransaction
 from beancount_sync.beancount_sync import BeancountTransaction
 import logging
-from beancount_util import *
+from beancount_sync.beancount_util import create_amount
 from datetime import datetime
 from model import *
 
@@ -49,7 +49,7 @@ class MonzoTranslater:
         return BeancountTransaction(external_id=tx.id, tx_date=tx_date, amount=amount.number,
                                     credit_account=credit_account,
                                     debit_account=debit_account, payee=payee, description=description, flagged=flagged,
-                                    metadata=tx.model_dump_json(), source="monzo")
+                                    metadata=tx.model_dump(), source="monzo")
 
     def _get_transaction_accounts(self, monzo_tx: MonzoTransaction) -> tuple[str | None, MonzoAccountRule | None]:
         for rule in self.config.accountRules:

@@ -1,7 +1,7 @@
 import datetime
 from dateutil.relativedelta import relativedelta
 import time
-from src.beancount_sync.beancount_util import *
+from beancount_sync.beancount_util import *
 from beancount.parser import printer
 
 

@@ -5,6 +5,7 @@ from decimal import Decimal
 import re
 import logging
 from model import GcSantanderTransaction as GcSantanderTransaction
+import uuid
 
 from typing import Optional
 
@@ -97,7 +98,7 @@ def parse_csv(contents: str) -> Iterable[SantanderTransaction]:
         balance = Decimal(balance_line)
         amount = Decimal(amount_line)
         date = datetime.strptime(date_line, "%d/%m/%Y").date()
-        yield SantanderTransaction(date=date, description=description_line, amount=amount, balance=balance,
+        yield SantanderTransaction(id=str(uuid.uuid4()), date=date, description=description_line, amount=amount, balance=balance,
             reference=ref, account_name=account_name, type=type)
 
 # Convert from GoCardless

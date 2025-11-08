@@ -69,8 +69,9 @@ class Store:
         return [t(**x) for x in js]
 
 
-    def write(self, name: str, contents: Union[BaseModel, str, list[BaseModel]], bucket=None) -> None:
+    def write(self, name: str, contents: Union[BaseModel, str, list[T]], bucket=None) -> None:
         bucket = self.bucket if not bucket else bucket
+        s = None
         match contents:
             case str():
                 s = contents
@@ -78,4 +79,6 @@ class Store:
                 s = contents.model_dump_json()
             case list():
                 s = json.dumps([x.model_dump_json() for x in contents])
+        if not s:
+            raise RuntimeError("Invalid s")
         write_file(self.minio_client, bucket, name, s)
