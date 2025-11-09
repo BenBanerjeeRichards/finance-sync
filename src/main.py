@@ -1,3 +1,6 @@
+import asyncio
+
+import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
 from notification.notifier import Notifier
@@ -17,7 +20,7 @@ import multiprocessing
 from storage import Store, load_monzo_store
 from notification.discord import DiscordClient
 from model import Config
-
+from web.web import create_fastapi
 
 logging.basicConfig(
     level=logging.INFO,
@@ -92,9 +95,12 @@ def main():
     gc_client = GoCardlessClient(settings.gc_secret_id, settings.gc_secret_key, config.gocardless.insitutionId,
                                  config.gocardless.redirectUri)
 
-    monzo_store = load_monzo_store(minio_client)
-    monzo_client = MonzoClient(monzo_store.access_token, monzo_store.refresh_token,
-                               settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id)
+    def get_monzo_tokens() -> tuple[str, str]:
+        # Always request tokens from minio to prevent issues with keeping state inside MonzoClient
+        monzo_store = load_monzo_store(minio_client)
+        return monzo_store.access_token, monzo_store.refresh_token
+
+    monzo_client = MonzoClient(settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id, get_monzo_tokens)
 
     # Connection used to manage reqs, importer for importing santander
     gc_connection = GcConnection(gc_client, Store(minio_client, "transactions"), config)
@@ -109,7 +115,15 @@ def main():
         listen_for_updates(pika_connection, message_handler)
 
     def start_gc_sync():
-        gc_connection.serve()
+        # gc_connection.serve()
+        async def start_async():
+            pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
+            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, pika_connection), host="0.0.0.0", port=8080, log_level="info")
+            server = uvicorn.Server(config)
+            await server.serve()
+
+        logging.info("Starting finance sync server on 0.0.0.0:8080")
+        asyncio.run(start_async())
 
     p1 = multiprocessing.Process(target=start_pika)
     p2 = multiprocessing.Process(target=start_gc_sync)

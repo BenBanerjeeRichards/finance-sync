@@ -78,7 +78,7 @@ class Store:
             case BaseModel():
                 s = contents.model_dump_json()
             case list():
-                s = json.dumps([x.model_dump_json() for x in contents])
+                s = json.dumps([x.model_dump() for x in contents]) #sus
         if not s:
             raise RuntimeError("Invalid s")
         write_file(self.minio_client, bucket, name, s)

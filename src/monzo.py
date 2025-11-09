@@ -2,13 +2,13 @@ import requests
 import logging
 import json
 from datetime import datetime, timezone, timedelta
-from typing import Tuple
+from typing import Tuple, Callable
 import time
 import os
 
 
 MONZO_BASE = "https://api.monzo.com"
-
+REDIRECT_URL = "https://benbanerjeerichards.com/finance/monzo_redirect"
 
 def _check_response(res):
     try:
@@ -20,20 +20,20 @@ def _check_response(res):
 
 class MonzoClient:
 
-    def __init__(self, access_token: str, refresh_token: str, client_id: str, client_secret: str, account_id: str):
-        self.access_token = access_token
-        self.refresh_token = refresh_token
+    def __init__(self, client_id: str, client_secret: str, account_id: str, get_tokens: Callable[[], tuple[str, str]]):
+        self.get_tokens = get_tokens
         self.client_id = client_id
         self.client_secret = client_secret
         self.account_id = account_id
 
 
     def get_access_token(self) -> Tuple[str, str]:
+        _, refresh_token = self.get_tokens()
         res = requests.post(MONZO_BASE + "/oauth2/token", {
                 "grant_type": "refresh_token",
                 "client_id": self.client_id,
                 "client_secret": self.client_secret,
-                "refresh_token": self.refresh_token
+                "refresh_token": refresh_token
         })
         _check_response(res)
         j = res.json()
@@ -41,12 +41,13 @@ class MonzoClient:
 
 
     def get_transactions(self, since=None, before=None, limit=100):
+        access_token, _ = self.get_tokens()
         start = time.time() * 1000
         since_query = "" if since is None else f"&since={since}"
         before_query = "" if before is None else f"&before={before}"
         url = MONZO_BASE + f"/transactions?expand[]=merchant&account_id={self.account_id}&limit={limit}" + since_query + before_query
         res = requests.get(url,
-                        headers={"Authorization": f"Bearer {self.access_token}"})
+                        headers={"Authorization": f"Bearer {access_token}"})
         _check_response(res)
         j = res.json()
         logging.info("Got transactions from monzo num_transactions=%s time_ms=%s url=%s",
@@ -90,19 +91,38 @@ class MonzoClient:
         # No point making this more generic as annotating doesn't work - https://community.monzo.com/t/annotate-transaction-endpoint-not-working-for-custom-key/121203
         # Seems that only notes are supported, which is fine for this application
         logging.info("Setting transaction note %s=%s", tx_id, notes)
+        access_token, _ = self.get_tokens()
         url = MONZO_BASE + f"/transactions/{tx_id}"
         update = {"metadata[notes]": notes}
         res = requests.patch(url,
-                        headers={"Authorization": f"Bearer {self.access_token}"}, data=update)
+                        headers={"Authorization": f"Bearer {access_token}"}, data=update)
         _check_response(res)
 
 
     def register_webhook(self, endpoint: str):
+        access_token, _ = self.get_tokens()
         url = MONZO_BASE + "/webhooks"
         data = {
             "account_id": self.account_id,
             "url": endpoint
         }
         res = requests.post(url,
-                        headers={"Authorization": f"Bearer {self.access_token}"}, data=data)
+                        headers={"Authorization": f"Bearer {access_token}"}, data=data)
         _check_response(res)
+
+
+    def exchange_code(self, code: str) -> tuple[str, str]:
+        response = requests.post(MONZO_BASE + "/oauth2/token", data={
+            "grant_type": "authorization_code",
+            "client_id": self.client_id,
+            "client_secret": self.client_secret,
+            "redirect_uri": REDIRECT_URL,
+            "code": code
+        })
+        _check_response(response)
+        res = response.json()
+        return res["access_token"], res["refresh_token"]
+
+
+    def get_start_ouath_url(self) -> str:
+        return f"https://auth.monzo.com/?client_id={self.client_id}&response_type=code&state=state&redirect_uri={REDIRECT_URL}"

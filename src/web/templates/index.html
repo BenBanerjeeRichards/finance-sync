@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="{{ hardcoded_url_for('static', path='/style.css') }}" rel="stylesheet">
+    <title>Finance Sync Admin</title>
+
+    <script>
+        const monzoOauth = () => {
+            console.log("Monzo oauth start")
+            window.location.href = "{{ start_monzo_url | safe}}"
+        }
+
+        const monzoPartialSync = async () => {
+            await fetch("/finance/monzo_partial_sync", {method: "POST"})
+            window.location.href = "/finance/success"
+        }
+
+        const monzoFullSync = async () => {
+            if (confirm("Please refresh monzo sync in the Monzo app to allow full transaction access")) {
+                await fetch("/finance/monzo_full_sync", {method: "POST"})
+                window.location.href = "/finance/success"
+            }
+        }
+    </script>
+</head>
+<body>
+<h1>Finance Sync Admin</h1>
+
+<div class="section">
+    <h2>Monzo</h2>
+    <button onclick="monzoPartialSync()">Sync monzo transactions (90d)</button>
+    <button onclick="monzoFullSync()">Sync monzo transactions (ALL)</button>
+    <button onclick="monzoOauth()">Re-connect OAuth...</button>
+</div>
+
+<div class="section">
+    <h2>Santander (Go-Cardless)</h2>
+    <button>Sync santander transactions</button>
+    <button>Re-connect GC OAuth...</button>
+</div>
+<div class="section">
+    <h2>Ledger</h2>
+    <button>Sync ledger</button>
+</div>
+
+</body>
+</html>
