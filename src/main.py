@@ -22,9 +22,10 @@ from notification.discord import DiscordClient
 from model import Config
 from web.web import create_fastapi
 
+# Don't include timestamp, we will just use loki ingestion timestamp
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(levelname)s - %(message)s",
 )
 
 
@@ -117,8 +118,7 @@ def main():
     def start_gc_sync():
         # gc_connection.serve()
         async def start_async():
-            pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
-            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, pika_connection), host="0.0.0.0", port=8080, log_level="info")
+            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string), host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()
 

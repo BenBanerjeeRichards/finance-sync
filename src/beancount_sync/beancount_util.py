@@ -30,18 +30,64 @@ def new_transaction(date, flag, postings, payee='', narration='', tags=frozenset
                        meta=meta)
 
 
-def transactions_equal(a: Transaction, b: Transaction) -> bool:
-    # this is a pain: we want to compare a and b ignoring metadata
-    # named tuples are immutable, so construct new transactions without metadata
-    if (a is None and b is not None) or (b is None and a is not None):
-        return False
+def _comparable_metadata(meta: Meta | None) -> dict:
+    if meta is None:
+        return {}
+    if meta.get("authorisation_amount"):
+        return {"authorisation_amount": meta["authorisation_amount"]}
+    return {}
 
-    def clean_posting(old: Posting) -> Posting:
-        return Posting(account=old.account, units=old.units, cost=old.cost, price=old.price, flag=old.flag, meta=None)
+def _compare_postings(old: Posting, to: Posting) -> dict:
+    diff = {}
+    if old.account != to.account:
+        diff["account"] = {'old': old.account, 'new': to.account}
+    if old.units != to.units:
+        diff["units"] = {'old': old.units, 'new': to.units}
+    if old.cost != to.cost:
+        diff["units"] = {'old': old.cost, 'new': to.cost}
+    if old.price != to.price:
+        diff["price"] = {'old': old.price, 'new': to.price}
+    if old.flag != to.flag:
+        diff["flag"] = {'old': old.flag, 'new': to.flag}
+    return diff
 
-    def clean_transaction(old: Transaction) -> Transaction:
-        return Transaction(date=old.date, flag=old.flag, payee='' if old.payee is None else old.payee,
-                           narration='' if old.narration is None else old.narration, tags=old.tags, links=old.links,
-                           postings=[clean_posting(p) for p in old.postings], meta={})
 
-    return clean_transaction(a) == clean_transaction(b)
+def transactions_equal(old: Transaction | None, to: Transaction) -> dict:
+    diff = {}
+    if old is None and to is not None:
+        return {"transaction": {"old": None, "new": to}}
+
+    if old.date != to.date:
+        diff["date"] = {'old': old.date, 'new': to.date}
+    if old.flag != to.flag:
+        diff["flag"] = {'old': old.flag, 'new': to.flag}
+    if old.payee != to.payee:
+        diff["payee"] = {'old': old.payee, 'new': to.payee}
+    if old.narration != to.narration:
+        diff["narration"] = {'old': old.narration, 'new': to.narration}
+    if old.tags != to.tags:
+        diff["tags"] = {'old': old.tags, 'new': to.tags}
+    if old.links != to.links:
+        diff["links"] = {'old': old.links, 'new': to.links}
+
+    old_meta = _comparable_metadata(old.meta)
+    new_meta = _comparable_metadata(to.meta)
+    if old_meta != new_meta:
+        diff["meta"] = {'old': old_meta, 'new': new_meta}
+
+    if len(old.postings) > 2 or len(to.postings) > 2:
+        # Right now we only create one posting for credit and one for debit
+        raise RuntimeError("Invalid beancount transaction: more than 2 postings found")
+
+    if len(old.postings) != len(to.postings):
+        diff["postings_len"] = {"old": len(old.postings), "new": len(to.postings)}
+    else:
+        for i, old_posting in enumerate(old.postings):
+            to_posting = to.postings[i]
+            d = _compare_postings(old_posting, to_posting)
+            if d != {}:
+                if "posting" not in diff:
+                    diff["posting"] = {}
+                diff["posting"][i] = d
+
+    return diff

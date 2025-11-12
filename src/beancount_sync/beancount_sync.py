@@ -64,11 +64,14 @@ class BeancountSync:
         created = []
 
         for tx in transactions:
-            status = f.add_or_update(tx)
-            if status == 'new':
-                created.append(tx)
-            elif status == 'updated':
-                updated.append(tx)
+            try:
+                status = f.add_or_update(tx)
+                if status == 'new':
+                    created.append(tx)
+                elif status == 'updated':
+                    updated.append(tx)
+            except Exception as e:
+                raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
         write_file(self.minio_client, self.config.bucket, ledger_name, f.export_as_string())
         logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
         return created, updated
@@ -96,15 +99,23 @@ class BeancountFile:
 
     def add_or_update(self, tx: BeancountTransaction) -> Literal['new', 'updated', 'none']:
         existing = self.entries_by_id.get(tx.external_id)
+        auth_amount = None
         if existing:
             # This is an update: we can only update payee or description
             if len(existing.postings) != 2:
                 raise BadTransactionError(
                     f"Only transactions with two postings supported, id {tx.external_id} has {len(existing.postings)}: {existing}")
             tx_units = existing.postings[0].units
-            if not tx_units or abs(tx_units.number or 0) != abs(tx.amount):
-                raise BadTransactionError(
-                    f"Can not update amount on transaction: existing is {existing.postings[0].units} and new is {tx.amount}. TX {tx.external_id} {existing}")
+            existing_tx_amount = 0 if not tx_units or not tx_units.number else tx_units.number
+            if tx_units is None or abs(existing_tx_amount) != abs(tx.amount):
+                # we do not model authorisations properly
+                # therefore, if more than is authorised is captured, we need to update the ledger
+                # to at least keep some record, note this change on the metadata and only allow a single change
+                # in practise, few MCCs allow this - e.g. public transport (Lothian buses for example)
+                logging.info(f"Changing amount on entry {tx.external_id} ({tx.payee} - {tx.description or "n/a"}) from {abs(existing_tx_amount)} to {abs(tx.amount)}")
+                if existing.meta.get("authorisation_amount") is not None:
+                    raise BadTransactionError(f"{tx.external_id}: Change of transaction amount from {existing_tx_amount} to {tx.amount}, however authorisation_amount was is already set")
+                auth_amount = existing_tx_amount
             if tx.tx_date != existing.date:
                 raise BadTransactionError(
                     f"Can not update transaction date to {tx.tx_date}: {tx.external_id} {existing}")
@@ -112,13 +123,17 @@ class BeancountFile:
         # Amount always > 0 -we use the credit/debit accounts to determine movement direction and add sign appropiatly
         credit_posting = new_posting(account=tx.credit_account, units=create_amount_from_decimal(-1 * tx.amount))
         debit_posting = new_posting(account=tx.debit_account, units=create_amount_from_decimal(tx.amount))
+        meta = {"external_id": tx.external_id}
+        if auth_amount is not None:
+            meta["authorisation_amount"] = auth_amount
         new_tx = new_transaction(date=tx.tx_date, flag="!" if tx.flagged else "*",
                                  postings=[credit_posting, debit_posting], payee=tx.payee, narration=tx.description,
-                                 meta={"external_id": tx.external_id})
-        status: Literal['none', 'updated', 'new'] = 'none' if transactions_equal(new_tx, existing) else ('updated' if existing is not None else 'new')
+                                 meta=meta)
+        diff = transactions_equal(existing, new_tx)
+        status: Literal['none', 'updated', 'new'] = 'none' if not diff else ('updated' if existing is not None else 'new')
 
         if status == 'updated':
-            logging.info("Updated: old=%s new=%s", existing, new_tx)
+            logging.info("Updated %s: diff=%s", tx.external_id, diff)
         self.entries_by_id[tx.external_id] = new_tx
         return status
 

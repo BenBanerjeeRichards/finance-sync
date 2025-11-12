@@ -23,6 +23,12 @@
                 window.location.href = "/finance/success"
             }
         }
+
+        const updateLedger = async () => {
+            await fetch("/finance/update_ledger", {method: "POST"})
+            window.location.href = "/finance/success"
+        }
+
     </script>
 </head>
 <body>
@@ -42,7 +48,7 @@
 </div>
 <div class="section">
     <h2>Ledger</h2>
-    <button>Sync ledger</button>
+    <button onclick="updateLedger()">Sync ledger</button>
 </div>
 
 </body>

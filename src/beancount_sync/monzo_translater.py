@@ -2,8 +2,8 @@ from model import Transaction as MonzoTransaction
 from beancount_sync.beancount_sync import BeancountTransaction
 import logging
 from beancount_sync.beancount_util import create_amount
-from datetime import datetime
 from model import *
+import datetime
 
 
 class MonzoTranslater:
@@ -37,7 +37,7 @@ class MonzoTranslater:
             debit_account = other_account
             credit_account = cash_account
 
-        tx_date = datetime.fromisoformat(tx.created).date()
+        tx_date = datetime.datetime.fromisoformat(tx.created).date()
 
         merchant_name = None if not tx.merchant else tx.merchant.name
         counterparty_name = None if not tx.counterparty else tx.counterparty.name

@@ -3,10 +3,11 @@ import datetime
 import os
 from pathlib import Path
 
+import pika
 import uvicorn
 from fastapi import FastAPI, Request
 from minio import Minio
-from pika.adapters.blocking_connection import BlockingConnection
+from pika.adapters.blocking_connection import BlockingConnection, BlockingChannel
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
@@ -29,9 +30,14 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals['hardcoded_url_for'] = hardcoded_url_for
 
-def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq: BlockingConnection) -> FastAPI:
+def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connection_string: str) -> FastAPI:
     app = FastAPI(root_path=os.environ.get("make"),redirect_slashes=False)
     app.mount("/finance/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
+
+    def _get_channel() -> BlockingChannel:
+        # just make new connection so we don't have to worry about maintaining
+        # heartbeats
+        return  pika.BlockingConnection(pika.URLParameters(rmq_connection_string)).channel()
 
     @app.get("/finance/")
     async def index(request: Request):
@@ -51,18 +57,21 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq: Blocking
 
     @app.post("/finance/monzo_partial_sync")
     async def monzo_partial_sync():
-        ch = rmq.channel()
-        ch.basic_publish("", 	"monzo-sync-transactions", body=MonzoSyncMessage(past_days=89).model_dump_json())
+        _get_channel().basic_publish("", 	"monzo-sync-transactions", body=MonzoSyncMessage(past_days=89).model_dump_json())
+
+    @app.post("/finance/update_ledger")
+    async def monzo_partial_sync():
+        _get_channel().basic_publish("", 	"update-ledger", body=MonzoSyncMessage(past_days=89).model_dump_json())
 
     @app.post("/finance/monzo_full_sync")
     async def monzo_partial_sync():
-        ch = rmq.channel()
         start = datetime.datetime(year=2018, month=1, day=1)
         now = datetime.datetime.now()
         days = (now - start).days
-        ch.basic_publish("", 	"monzo-sync-transactions", body=MonzoSyncMessage(past_days=days).model_dump_json())
+        _get_channel().basic_publish("", 	"monzo-sync-transactions", body=MonzoSyncMessage(past_days=days).model_dump_json())
 
     return app
+
 
 async def main():
     app = create_fastapi(monzo_client=None, minio_client=None)
