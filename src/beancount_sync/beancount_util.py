@@ -61,8 +61,10 @@ def transactions_equal(old: Transaction | None, to: Transaction) -> dict:
         diff["date"] = {'old': old.date, 'new': to.date}
     if old.flag != to.flag:
         diff["flag"] = {'old': old.flag, 'new': to.flag}
-    if old.payee != to.payee:
-        diff["payee"] = {'old': old.payee, 'new': to.payee}
+    old_payee = old.payee or ''
+    to_payee = to.payee or ''
+    if old_payee != to_payee:
+        diff["payee"] = {'old': old_payee, 'new': to_payee}
     if old.narration != to.narration:
         diff["narration"] = {'old': old.narration, 'new': to.narration}
     if old.tags != to.tags:

@@ -28,15 +28,15 @@ class SantanderTranslater:
             return None
 
         if tx.amount >= 0:
-            # This is money into the monzo cash, hence we are crediting the cash account
+            # Positive is money coming into the santander account, so we debit the cash account
             credit_amount = create_amount_from_decimal(tx.amount)
-            debit_account = other_account
-            credit_account = cash_account
+            debit_account = cash_account
+            credit_account = other_account
         else:
             # Spending money from the cash account
             credit_amount = create_amount_from_decimal(tx.amount * -1)
-            debit_account = cash_account
-            credit_account = other_account
+            debit_account = other_account
+            credit_account = cash_account
 
         return BeancountTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount.number,
                                     credit_account=credit_account,
