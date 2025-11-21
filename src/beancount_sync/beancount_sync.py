@@ -83,8 +83,8 @@ class BeancountSync:
 
 class BeancountFile:
 
-    def __init__(self, filename: str):
-        entries, errors, options = load_string(filename)
+    def __init__(self, beancount_contents: str):
+        entries, errors, options = load_string(beancount_contents)
         self.entries_by_id: dict[str, Transaction] = {}
         for e in entries:
             ext_id = e.meta.get("external_id")

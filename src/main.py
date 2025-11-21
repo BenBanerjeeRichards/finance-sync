@@ -3,10 +3,11 @@ import asyncio
 import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
+
 from notification.notifier import Notifier
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from importer.santander_import import SantanderImporter
-from model import Settings
+from model import Settings, Transaction
 import os
 import minio
 import pika
@@ -17,6 +18,8 @@ from handler import Handler
 from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 import multiprocessing
+
+from scripts.backfill import backfill_monzo, backfill_santander_gc, backfill_from_beancount
 from storage import Store, load_monzo_store
 from notification.discord import DiscordClient
 from model import Config
@@ -113,10 +116,12 @@ def main():
         pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
         message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer, pika_connection,
                           notifier)
+        # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
+        # backfill_from_beancount(config, pika_connection.channel(), minio_client, "actual-sync.transactions", "ledger", "FY24.bean")
+        # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")
         listen_for_updates(pika_connection, message_handler)
 
     def start_gc_sync():
-        # gc_connection.serve()
         async def start_async():
             config = uvicorn.Config(create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string), host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)

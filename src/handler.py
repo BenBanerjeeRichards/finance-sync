@@ -75,6 +75,7 @@ class Handler:
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
         sync_since = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=sync_message.past_days)
         self.monzo_importer.import_transactions(sync_since)
+        sync_monzo_ledger(self.config, self.store, self.beancount_sync)
 
     @rmq_handler(TransactionUpdate)
     def on_monzo_update_notes(self, updates: list[TransactionUpdate]):
