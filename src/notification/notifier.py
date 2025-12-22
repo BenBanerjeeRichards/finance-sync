@@ -7,10 +7,9 @@ class Notifier:
     def __init__(self, discord_client: DiscordClient):
         self.discord_client = discord_client
 
-    def send_santander_discord_notification(self, tx: BeancountTransaction) -> None:
+    def send_santander_discord_notification(self, account_name: str, tx: BeancountTransaction) -> None:
         formatted_amount = f"£{abs(tx.amount):.2f}"
-
-        if tx.amount > 0:
+        if tx.debit_account == account_name:
             message = f"💸 Received {formatted_amount} from {tx.payee or tx.description}"
         else:
             message = f"💵 Spent {formatted_amount} at {tx.payee or tx.description}"

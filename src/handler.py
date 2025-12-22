@@ -10,13 +10,13 @@ from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
 from importer.monzo_import import MonzoImporter
 from importer.santander_import import SantanderImporter
-from model import Transaction, MonzoStore, Config,  MonzoSyncMessage, TransactionUpdate, SantanderTransactions
+from model import Transaction, MonzoStore, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions
 from monzo import MonzoClient
 from notification.notifier import Notifier
 from santander import from_gc
-from storage import  SANTANDER_TX_FILE, write_monzo_store, MONZO_TX_FILE, Store
+from storage import SANTANDER_TX_FILE, write_monzo_store, MONZO_TX_FILE, Store
 from notification.discord import DiscordClient
-from pika.adapters.blocking_connection import  BlockingConnection
+from pika.adapters.blocking_connection import BlockingConnection
 
 
 def rmq_handler(body_type: type[BaseModel] | None = None):
@@ -29,7 +29,8 @@ def rmq_handler(body_type: type[BaseModel] | None = None):
             elif len(args) == 5:
                 self, ch, method, properties, body = args
             else:
-                raise RuntimeError(f"Invalid number of arguments to rmq_handler, expected 4 or 5, got {len(args)}: {args}")
+                raise RuntimeError(
+                    f"Invalid number of arguments to rmq_handler, expected 4 or 5, got {len(args)}: {args}")
 
             def self_aware_handler(f, *inner_args):
                 if self:
@@ -58,6 +59,7 @@ class Handler:
     """
     Main entry point for all tasks triggered from RMQ
     """
+
     def __init__(self, config: Config, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
                  santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier):
         self.config = config
@@ -94,7 +96,6 @@ class Handler:
         sync_monzo_ledger(self.config, self.store, self.beancount_sync)
         sync_santander_ledger(self.config, self.store, self.beancount_sync)
 
-
     @rmq_handler()
     def on_santander_sync_transactions(self):
         self.santander_import.import_transactions()
@@ -105,9 +106,8 @@ class Handler:
 
     @rmq_handler(BeancountTransaction)
     def notify_new_transaction(self, tx: BeancountTransaction):
-        logging.info("Got transaction %s", tx)
-        if tx.source == "santander":
-            self.notifier.send_santander_discord_notification(tx)
+        if tx.credit_account == self.config.santanderCashAccount or tx.debit_account == self.config.santanderCashAccount:
+            self.notifier.send_santander_discord_notification(self.config.santanderCashAccount, tx)
 
 
 def sync_santander_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
@@ -117,11 +117,10 @@ def sync_santander_ledger(config: Config, store: Store, beancount_sync: Beancoun
     ledger_transactions = [tx for tx in mapped_transactions if tx]
     beancount_sync.sync(config.santanderBeanFileName, ledger_transactions)
 
+
 def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
     monzo_transactions = store.load_list(MONZO_TX_FILE, Transaction)
     translater = MonzoTranslater(config)
     # We limit start from FY25 as that is only as far back as I have Santander and can be bothered to do the manual postings for
-    ledger_transactions = [translater.translate_to_beancount(tx)  for tx in  monzo_transactions if tx.created > "2024-04"]
+    ledger_transactions = [translater.translate_to_beancount(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     beancount_sync.sync(config.beanFileName, ledger_transactions)
-
-
