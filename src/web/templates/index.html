@@ -29,6 +29,12 @@
             window.location.href = "/finance/success"
         }
 
+        const onStartReq = () => {
+            console.log("Start req")
+            window.location.href = "/finance/start-requisition"
+        }
+
+
     </script>
 </head>
 <body>
@@ -44,7 +50,7 @@
 <div class="section">
     <h2>Santander (Go-Cardless)</h2>
     <button>Sync santander transactions</button>
-    <button>Re-connect GC OAuth...</button>
+    <button onclick="onStartReq()">Re-connect GC OAuth...</button>
 </div>
 <div class="section">
     <h2>Ledger</h2>

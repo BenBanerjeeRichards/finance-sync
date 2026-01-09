@@ -33,11 +33,17 @@ logging.basicConfig(
 
 
 def load_settings() -> Settings:
+    rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]
+    # HACK: default rmq operator secret uses 3 dots, (rabbitmq.default.svc), but this fails to resolve with low values of
+    # ndots (required for resolution of over domains...). So repace with fully higher number of dots rabbitmq.default.svc.cluster.local
+    if ".svc" in rmq_connection_string and ".cluster.local" not in rmq_connection_string:
+        rmq_connection_string = rmq_connection_string.replace(".svc", ".svc.cluster.local")
+
     return Settings(
         monzo_account_id=os.environ["MONZO_ACCOUNT_ID"],
         monzo_client_id=os.environ["MONZO_CLIENT_ID"],
         monzo_client_secret=os.environ["MONZO_CLIENT_SECRET"],
-        rabbitmq_connection_string=os.environ["RABBITMQ_CONNECTION_STRING"],
+        rabbitmq_connection_string=rmq_connection_string,
         minio_endpoint=os.environ["MINIO_ENDPOINT"],
         minio_access=os.environ["MINIO_ACCESS"],
         minio_secret=os.environ["MINIO_SECRET"],
@@ -123,7 +129,7 @@ def main():
 
     def start_gc_sync():
         async def start_async():
-            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string), host="0.0.0.0", port=8080, log_level="info")
+            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection), host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()
 

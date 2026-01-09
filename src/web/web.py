@@ -8,16 +8,17 @@ import uvicorn
 from fastapi import FastAPI, Request
 from minio import Minio
 from pika.adapters.blocking_connection import BlockingConnection, BlockingChannel
+from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
+from gocardless.gc_connection import GcConnection
 from model import MonzoStore, MonzoSyncMessage
 from monzo import MonzoClient
 from storage import write_monzo_store
 
 
-# I have wasted too much of my life trying to get k8s, nginx, fastapi to work and they don't
-# so instead of trying to debug this impossible mess I am hardcoding this
+# TODO setup routes properly
 def hardcoded_url_for(name: str, **kwargs):
     if name == "static" and not os.environ.get("LOCAL") == "true":
         # kwargs should contain 'path'
@@ -30,7 +31,7 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals['hardcoded_url_for'] = hardcoded_url_for
 
-def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connection_string: str) -> FastAPI:
+def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connection_string: str, gc_connection: GcConnection) -> FastAPI:
     app = FastAPI(root_path=os.environ.get("make"),redirect_slashes=False)
     app.mount("/finance/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -69,6 +70,16 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         now = datetime.datetime.now()
         days = (now - start).days
         _get_channel().basic_publish("", 	"monzo-sync-transactions", body=MonzoSyncMessage(past_days=days).model_dump_json())
+
+    @app.get("/finance/start-requisition")
+    async def start_gc_req():
+        link_url = gc_connection.start_requisition()
+        return RedirectResponse(link_url)
+
+    @app.get("/finance/complete-requisition")
+    async def start_gc_req(request: Request, ref: str):
+        gc_connection.complete_requisition(ref)
+        return templates.TemplateResponse("success.html", {"request": request})
 
     return app
 
