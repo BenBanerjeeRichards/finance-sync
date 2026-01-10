@@ -99,9 +99,9 @@ class Handler:
     @rmq_handler()
     def on_santander_sync_transactions(self):
         self.santander_import.import_transactions()
-        expires_in = self.santander_import.days_requisitions_expiring_in()
-        if expires_in >= self.config.gocardless.notifyOlderThan:
-            self.notifier.notify_expiring("GoCardless", self.config.gocardless.startUri, expires_in)
+        age_days = self.santander_import.requisition_oldest_days()
+        if age_days >= self.config.gocardless.notifyOlderThan:
+            self.notifier.notify_expiring("GoCardless", self.config.gocardless.startUri, 90 - age_days)
         sync_santander_ledger(self.config, self.store, self.beancount_sync)
 
     @rmq_handler(BeancountTransaction)

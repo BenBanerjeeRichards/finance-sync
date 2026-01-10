@@ -70,11 +70,7 @@ class SantanderImporter:
         )
 
 
-    def days_requisitions_expiring_in(self) -> int | None:
-        # TODO: this doesn't really belong here
-        """
-        The number of days the soonest requisition will expire, or None if there are no active requisitions
-        """
+    def requisition_oldest_days(self) -> int | None:
         self.client.get_new_tokens()
         requisitions = self.client.get_requisitions()
         inst_id = self.config.gocardless.insitutionId
