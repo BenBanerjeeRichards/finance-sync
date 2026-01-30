@@ -129,7 +129,7 @@ class MonzoImporter:
         original_tx_id = tx.get("metadata", {}).get("original_transaction_id")
         pot_id = tx.get("metadata", {}).get("pot_id")
         # We map custom categories straight away to a readable string to hide the implementation detail
-        category = self.config.monzoCategoryMappings.get(tx["category"], tx["category"])
+        category = self.config.monzoCustomCategories.get(tx["category"], tx["category"])
 
         return Transaction(id=tx["id"], created=tx["created"], settled=tx.get("settled"), merchant=merchant,
                            amount=tx["amount"],
