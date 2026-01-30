@@ -2,7 +2,6 @@ from minio import Minio
 from pydantic import BaseModel
 import logging
 from model import Config, Transaction, Merchant, Counterparty, Tab, Attachment, TransactionUpdate
-import monzo
 import re
 import datetime
 
@@ -20,10 +19,11 @@ class MonzoConfig(BaseModel):
 
 class MonzoImporter:
 
-    def __init__(self, monzo_client: MonzoClient, minio_client: Minio):
+    def __init__(self, config: Config, monzo_client: MonzoClient, minio_client: Minio):
         self.monzo_client = monzo_client
         self.minio_client = minio_client
         self.store = Store(minio_client)
+        self.config = config
 
     def import_transactions(self, since: datetime.datetime):
         logging.info("Syncing transactions since=%s", since)
@@ -32,8 +32,9 @@ class MonzoImporter:
             [MonzoImporter.augment_monzo_transaction(t) for t in batch]
             synced_monzo_transactions.extend(batch)
         logging.info("Got %s transactions from monzo", len(synced_monzo_transactions))
-        synced_transactions = [MonzoImporter.monzo_to_transaction(tx) for tx in synced_monzo_transactions]
+        synced_transactions = [self.monzo_to_transaction(tx) for tx in synced_monzo_transactions]
         created, updated = self._write_transactions_to_storage(synced_transactions)
+        logging.info("Updated monzo transactions: %s created, %s updated", len(updated), len(created))
 
     def update_notes(self, updates: list[TransactionUpdate]):
         # Why not write to monzo and then re-sync?
@@ -59,11 +60,12 @@ class MonzoImporter:
             if update.transactionId in update_transaction_ids:
                 self.monzo_client.set_transaction_notes(update.transactionId, update.note)
 
-    def _write_transactions_to_storage(self, synced_transactions: list[Transaction]) -> tuple[list[Transaction], list[Transaction]]:
+    def _write_transactions_to_storage(self, synced_transactions: list[Transaction]) -> tuple[
+        list[Transaction], list[Transaction]]:
         synced_id_to_tx = {t.id: t for t in synced_transactions}
         new_stored_transactions = []
         updated = []
-        created =[]
+        created = []
         total_unchanged = 0
 
         stored_transactions = self.store.load_list(MONZO_TX_FILE, Transaction)
@@ -83,7 +85,8 @@ class MonzoImporter:
             new_stored_transactions.append(synced_id_to_tx[synced_tx_id])
             created.append(synced_id_to_tx[synced_tx_id])
 
-        logging.info("Syncing transactions to minio. updated=%s created=%s unchanged=%s", len(updated), len(created), total_unchanged)
+        logging.info("Syncing transactions to minio. updated=%s created=%s unchanged=%s", len(updated), len(created),
+                     total_unchanged)
         self.store.write(MONZO_TX_FILE, new_stored_transactions)
         return created, updated
 
@@ -97,8 +100,7 @@ class MonzoImporter:
         if tx.get("notes"):
             tx["tags"] = MonzoImporter.get_tags_from_string(tx["notes"])
 
-    @staticmethod
-    def monzo_to_transaction(tx) -> Transaction:
+    def monzo_to_transaction(self, tx) -> Transaction:
         merchant = None
         counterparty = None
         tab = None
@@ -126,9 +128,12 @@ class MonzoImporter:
         attachments = [Attachment(url=a.get("url"), file_type=a.get("file_type")) for a in tx_attachments]
         original_tx_id = tx.get("metadata", {}).get("original_transaction_id")
         pot_id = tx.get("metadata", {}).get("pot_id")
+        # We map custom categories straight away to a readable string to hide the implementation detail
+        category = self.config.monzoCategoryMappings.get(tx["category"], tx["category"])
+
         return Transaction(id=tx["id"], created=tx["created"], settled=tx.get("settled"), merchant=merchant,
                            amount=tx["amount"],
-                           category=tx["category"], tags=tags, notes=tx["notes"], local_currency=tx["local_currency"],
+                           category=category, tags=tags, notes=tx["notes"], local_currency=tx["local_currency"],
                            local_amount=tx["local_amount"], include_in_spending=tx["include_in_spending"],
                            counterparty=counterparty,
                            attachments=attachments, tab=tab, is_split=is_split, original_transaction_id=original_tx_id,

@@ -68,7 +68,7 @@ class Handler:
         self.monzo_client = monzo_client
         self.santander_import = santander_import
         self.pika_connection = pika_connection
-        self.monzo_importer = MonzoImporter(monzo_client, self.minio_client)
+        self.monzo_importer = MonzoImporter(config, monzo_client, self.minio_client)
         self.notifier = notifier
         self.store = Store(self.minio_client)
         self.beancount_sync = BeancountSync(config, minio_client, pika_connection)

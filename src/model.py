@@ -103,6 +103,7 @@ class MonzoAccountRule(BaseModel):
     narrative: str | None = None
     groupId: str | None = None
     merhantGroupId: str | None = None
+    merchantGroupId: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -144,6 +145,7 @@ class Config(BaseModel):
     beanFileName: str
     santanderBeanFileName: str
     gocardless: GoCardlessConfig
+    monzoCustomCategories: dict[str, str] = {}
 
     model_config = {"extra": "forbid"}
 

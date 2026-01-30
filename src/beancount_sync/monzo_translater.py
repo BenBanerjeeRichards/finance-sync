@@ -77,7 +77,7 @@ class MonzoTranslater:
         pot_id = rule.potId
         if pot_id:
             return tx.pot_id == pot_id
-        group_id = rule.merhantGroupId
+        group_id = rule.merhantGroupId or rule.merchantGroupId
         if group_id:
             if tx.merchant and tx.merchant.group_id == group_id:
                 return True
