@@ -1,7 +1,8 @@
-from pydantic import BaseModel
-from typing import Optional
 import datetime
 from decimal import Decimal
+from typing import Optional
+
+from pydantic import BaseModel
 
 
 class Merchant(BaseModel):
@@ -9,7 +10,7 @@ class Merchant(BaseModel):
     logo_url: Optional[str] = None
     lat: Optional[float] = None
     long: Optional[float] = None
-    approximate: bool = False       # Is the location approx (e.g generic country/city location or specifc lat/lon)
+    approximate: bool = False  # Is the location approx (e.g generic country/city location or specifc lat/lon)
     country: Optional[str] = None
     id: Optional[str]
     group_id: Optional[str] = None
@@ -21,16 +22,21 @@ class Counterparty(BaseModel):
     name: Optional[str] = None
     id: str
     is_monzo: bool
-    account_number: Optional[str] = None       # Helpful for reconcilling with the account transfer came from/to
+    account_number: Optional[str] = (
+        None  # Helpful for reconcilling with the account transfer came from/to
+    )
+
 
 class Tab(BaseModel):
     id: str
     name: str
     participant_names: list[str]
 
+
 class Attachment(BaseModel):
     file_type: str
     url: str
+
 
 class Transaction(BaseModel):
     id: str
@@ -47,18 +53,22 @@ class Transaction(BaseModel):
     counterparty: Optional[Counterparty] = None
     tab: Optional[Tab] = None
     attachments: Optional[list[Attachment]] = None
-    is_split: bool = False    # Has this been split - i.e. payment requested to others
-    original_transaction_id: Optional[str] = None   # If this is an incoming transaction to pay a split, this is the original tx that has been split
-    pot_id: Optional[str] = None        # If we are transferring from/to a pot, this is the id
+    is_split: bool = False  # Has this been split - i.e. payment requested to others
+    original_transaction_id: Optional[str] = (
+        None  # If this is an incoming transaction to pay a split, this is the original tx that has been split
+    )
+    pot_id: Optional[str] = None  # If we are transferring from/to a pot, this is the id
 
 
 class TransactionUpdate(BaseModel):
     transactionId: str
     note: str
 
+
 class MonzoStore(BaseModel):
     access_token: str
     refresh_token: str
+
 
 class GcStore(BaseModel):
     requisition_id: str
@@ -83,10 +93,10 @@ class Settings(BaseModel):
 class GcSantanderTransaction(BaseModel):
     transaction_id: str
     description: str
-    counterparty_name: Optional[str]  = None
+    counterparty_name: Optional[str] = None
     amount: Decimal
     transaction_code: str | None = None
-    date: datetime.date | None = None       # Will be None if not booked
+    date: datetime.date | None = None  # Will be None if not booked
     booked: bool
 
 
@@ -104,6 +114,7 @@ class MonzoAccountRule(BaseModel):
     groupId: str | None = None
     merhantGroupId: str | None = None
     merchantGroupId: str | None = None
+    counterpartyName: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -136,7 +147,7 @@ class Config(BaseModel):
     accountRules: list[MonzoAccountRule]
     monzoCashAccount: str
     santanderCashAccount: str
-    startDate: str   # keep as raw string
+    startDate: str  # keep as raw string
     defaultIncomeAccount: str
     defaultExpenseAccount: str
     santanderAccountRules: list[SantanderAccountRule]
@@ -163,4 +174,3 @@ class NotifyExpiringMessage(BaseModel):
     name: str
     url: Optional[str] = None
     days: int | None = None
-
