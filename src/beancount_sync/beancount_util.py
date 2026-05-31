@@ -33,9 +33,9 @@ def new_transaction(date, flag, postings, payee='', narration='', tags=frozenset
 def _comparable_metadata(meta: Meta | None) -> dict:
     if meta is None:
         return {}
-    if meta.get("authorisation_amount"):
-        return {"authorisation_amount": meta["authorisation_amount"]}
-    return {}
+    disallowed_keys = ['filename', 'lineno', '__tolerances__', 'external_id']
+    allowed_keys = [k for k in meta.keys() if k not in disallowed_keys]
+    return {k: meta.get(k) for k in allowed_keys}
 
 def _compare_postings(old: Posting, to: Posting) -> dict:
     diff = {}

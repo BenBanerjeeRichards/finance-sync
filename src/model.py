@@ -115,6 +115,7 @@ class MonzoAccountRule(BaseModel):
     merhantGroupId: str | None = None
     merchantGroupId: str | None = None
     counterpartyName: str | None = None
+    metadata: dict[str, str] = {}
 
     model_config = {"extra": "forbid"}
 
@@ -129,6 +130,7 @@ class SantanderAccountRule(BaseModel):
     type: str | None = None
     ignore: bool | None = None
     amount: float | None = None
+    metadata: dict[str, str] = {}
 
     model_config = {"extra": "forbid"}
 
@@ -141,6 +143,17 @@ class GoCardlessConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+
+# Support things that are billed periodically - e.g. factor billed every Q
+# Allow us to accrue a liability every month and update these once settled each Q
+# Only supports monthly basis for now (i.e. build liability each month)
+class AccrualConfig(BaseModel):
+    name: str
+    metadata_key: str   # metadata key that identifies transactions for this
+    settlement_months: int  # how many months does a settlement cover. e.g. quarterly bill = 3
+    liability_account: str
+
+    model_config = {"extra": "forbid"}
 
 class Config(BaseModel):
     monzoCategoryMappings: dict[str, str]
@@ -157,8 +170,10 @@ class Config(BaseModel):
     santanderBeanFileName: str
     gocardless: GoCardlessConfig
     monzoCustomCategories: dict[str, str] = {}
+    accruals: list[AccrualConfig] = []
 
     model_config = {"extra": "forbid"}
+
 
 
 class MonzoSyncMessage(BaseModel):

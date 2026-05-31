@@ -17,15 +17,21 @@ class SantanderTranslater:
         cash_account = self.config.santanderCashAccount
         flagged = False
 
-        other_account, ignore = self._get_santander_account(tx)
-        if not other_account:
+        account_rule = self._get_santander_account(tx)
+        if not account_rule:
             logging.warning("Failed to find santander account for transaction %s (created=%s, amount=%s)", tx, tx.date,
                             tx.amount)
             flagged = True
             other_account = self.config.defaultIncomeAccount if tx.amount >= 0 else self.config.defaultExpenseAccount
-        if ignore:
-            logging.info("Skipping transaction as ignored %s", tx)
-            return None
+            ledger_metadata = {}
+        else:
+            other_account = account_rule.accountName
+            if account_rule.ignore or False:
+                # We specify rule.ignore for postings created on monzo side to prevent duplicates when transferring
+                # Proper accounting rules would be to post both transfers, but we are lazy and only do one
+                logging.info("Skipping transaction as ignored %s", tx)
+                return None
+            ledger_metadata = account_rule.metadata
 
         if tx.amount >= 0:
             # Positive is money coming into the santander account, so we debit the cash account
@@ -42,15 +48,13 @@ class SantanderTranslater:
                                     credit_account=credit_account,
                                     debit_account=debit_account, payee=tx.account_name or "",
                                     description=tx.description, flagged=flagged,
-                                    metadata=tx.model_dump(), source="santander")
+                                    metadata=tx.model_dump(), source="santander", ledger_metadata=ledger_metadata)
 
-    def _get_santander_account(self, tx: SantanderTransaction) -> tuple[str | None, bool]:
+    def _get_santander_account(self, tx: SantanderTransaction) -> SantanderAccountRule | None:
         for rule in self.config.santanderAccountRules:
             if SantanderTranslater._santander_rule_matches(rule, tx):
-                # We specify rule.ignore for postings created on monzo side to prevent duplicates when transferring 
-                # Proper accounting rules would be to post both transfers, but we are lazy and only do one
-                return rule.accountName, rule.ignore or False
-        return None, False
+                return rule
+        return None
 
     @staticmethod
     def _santander_rule_matches(rule: SantanderAccountRule, tx: SantanderTransaction) -> bool:

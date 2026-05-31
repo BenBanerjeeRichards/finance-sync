@@ -29,6 +29,8 @@ class BeancountTransaction(BaseModel):
     # the full data from the source of this transaction: e.g. monzo api data
     # can be used for more granular information
     metadata: dict = {}
+    # Metadata to add directly into the ledger
+    ledger_metadata: dict = {}
     source: str = ""
 
 
@@ -123,7 +125,7 @@ class BeancountFile:
         # Amount always > 0 -we use the credit/debit accounts to determine movement direction and add sign appropiatly
         credit_posting = new_posting(account=tx.credit_account, units=create_amount_from_decimal(-1 * tx.amount))
         debit_posting = new_posting(account=tx.debit_account, units=create_amount_from_decimal(tx.amount))
-        meta = {"external_id": tx.external_id}
+        meta = {**tx.ledger_metadata, "external_id": tx.external_id}
         if auth_amount is not None:
             meta["authorisation_amount"] = auth_amount
         new_tx = new_transaction(date=tx.tx_date, flag="!" if tx.flagged else "*",

@@ -11,7 +11,7 @@ class MonzoTranslater:
     """
     Translates monzo translations to Beancount ledger postings
     Uses the rules in the provided config to determine the account
-    Most just get the accounts from the monzo categories: e.g. Grocieres -> Expenses::Groceries
+    Most just get the accounts from the monzo categories: e.g. Groceries -> Expenses::Groceries
     """
 
     def __init__(self, config: Config) -> None:
@@ -66,6 +66,7 @@ class MonzoTranslater:
             flagged=flagged,
             metadata=tx.model_dump(),
             source="monzo",
+            ledger_metadata=rule.metadata if rule else {}
         )
 
     def _get_transaction_accounts(
