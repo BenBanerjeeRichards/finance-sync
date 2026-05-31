@@ -3,7 +3,7 @@ from beancount.core.data import Transaction as BcTransaction
 from beancount.loader import load_string
 from pika.adapters.blocking_connection import BlockingChannel
 
-from beancount_sync.beancount_sync import BeancountTransaction, BeancountFile
+from beancount_sync.beancount_sync import BeancountTransaction
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
 from model import Config, SantanderTransactions, Transaction
@@ -70,6 +70,7 @@ def backfill_from_beancount(config: Config, ch: BlockingChannel, minio_client: m
                                   source="beancount_file")
         bc_txs.append(bc)
     backfill_transactions(ch, route, bc_txs)
+
 def backfill_transactions(ch: BlockingChannel, routing: str, transactions: list[BeancountTransaction]) -> None:
     logging.info("Submitting %s transactions to routing key %s for backfill purposes", len(transactions), routing)
     for tx in transactions:

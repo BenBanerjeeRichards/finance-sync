@@ -5,6 +5,8 @@ from functools import wraps
 from minio import Minio
 from pydantic import BaseModel
 import logging
+
+from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import BeancountTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
@@ -61,7 +63,7 @@ class Handler:
     """
 
     def __init__(self, config: Config, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
-                 santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier):
+                 santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier, beancount: Beancount):
         self.config = config
         self.minio_client = minio_client
         self.discord_client = discord_client
@@ -71,7 +73,8 @@ class Handler:
         self.monzo_importer = MonzoImporter(config, monzo_client, self.minio_client)
         self.notifier = notifier
         self.store = Store(self.minio_client)
-        self.beancount_sync = BeancountSync(config, minio_client, pika_connection)
+        self.beancount = beancount
+        self.beancount_sync = BeancountSync(config, beancount, pika_connection)
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):

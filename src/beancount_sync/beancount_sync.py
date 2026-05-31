@@ -1,19 +1,17 @@
+from __future__ import annotations
 from datetime import date
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
 import logging
 
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from model import Config
-from beancount_sync.beancount_util import new_posting, create_amount_from_decimal, new_transaction, \
-    transactions_equal
-from storage import write_file
-import minio
-from beancount.core.data import Transaction
 from decimal import Decimal
-from beancount.parser import printer
-from beancount.loader import load_string
-from typing import Literal
 import pika
+
+if TYPE_CHECKING:
+    from beancount_sync.beancount import Beancount
 
 
 # Only consider transactions with two legs: credit and debit
@@ -40,9 +38,9 @@ class BadTransactionError(Exception):
 
 class BeancountSync:
 
-    def __init__(self, config: Config, minio_client: minio.Minio, rmq_connection: pika.BlockingConnection):
+    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection):
         self.config = config
-        self.minio_client = minio_client
+        self.beancount = beancount
         self.rmq_connection = rmq_connection
         self.channel = self.rmq_connection.channel()
 
@@ -59,88 +57,24 @@ class BeancountSync:
 
     def _update_ledger(self, ledger_name: str, transactions: list[BeancountTransaction]) -> tuple[
         list[BeancountTransaction], list[BeancountTransaction]]:
-        response = self.minio_client.get_object(bucket_name=self.config.bucket, object_name=ledger_name)
-        tx_contents = response.read().decode("utf-8")
-        f = BeancountFile(tx_contents)
         updated = []
         created = []
 
-        for tx in transactions:
-            try:
-                status = f.add_or_update(tx)
-                if status == 'new':
-                    created.append(tx)
-                elif status == 'updated':
-                    updated.append(tx)
-            except Exception as e:
-                raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
-        write_file(self.minio_client, self.config.bucket, ledger_name, f.export_as_string())
-        logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
-        return created, updated
+        with self.beancount.transaction() as beancount_tx:
+            for tx in transactions:
+                try:
+                    status = beancount_tx.create_or_update_transaction(ledger_name, tx)
+                    if status == 'new':
+                        created.append(tx)
+                    elif status == 'updated':
+                        updated.append(tx)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
+            logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
+            return created, updated
 
     def _publish_event(self, transaction: BeancountTransaction, exchange: str):
         logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)
         self.channel.basic_publish(exchange, "", body=transaction.model_dump_json())
 
 
-class BeancountFile:
-
-    def __init__(self, beancount_contents: str):
-        entries, errors, options = load_string(beancount_contents)
-        self.entries_by_id: dict[str, Transaction] = {}
-        for e in entries:
-            ext_id = e.meta.get("external_id")
-            if not ext_id:
-                logging.warning("No external id found on transaction %s", e)
-                continue
-            if not isinstance(e, Transaction):
-                logging.info("Invalid transaction %s", e)
-                continue
-            self.entries_by_id[ext_id] = e
-        logging.info("Loaded %s entries from file", len(self.entries_by_id.keys()))
-
-    def add_or_update(self, tx: BeancountTransaction) -> Literal['new', 'updated', 'none']:
-        existing = self.entries_by_id.get(tx.external_id)
-        auth_amount = None
-        if existing:
-            # This is an update: we can only update payee or description
-            if len(existing.postings) != 2:
-                raise BadTransactionError(
-                    f"Only transactions with two postings supported, id {tx.external_id} has {len(existing.postings)}: {existing}")
-            tx_units = existing.postings[0].units
-            existing_tx_amount = 0 if not tx_units or not tx_units.number else tx_units.number
-            if tx_units is None or abs(existing_tx_amount) != abs(tx.amount):
-                # we do not model authorisations properly
-                # therefore, if more than is authorised is captured, we need to update the ledger
-                # to at least keep some record, note this change on the metadata and only allow a single change
-                # in practise, few MCCs allow this - e.g. public transport (Lothian buses for example)
-                logging.info(f"Changing amount on entry {tx.external_id} ({tx.payee} - {tx.description or "n/a"}) from {abs(existing_tx_amount)} to {abs(tx.amount)}")
-                if existing.meta.get("authorisation_amount") is not None:
-                    raise BadTransactionError(f"{tx.external_id}: Change of transaction amount from {existing_tx_amount} to {tx.amount}, however authorisation_amount was is already set")
-                auth_amount = existing_tx_amount
-            if tx.tx_date != existing.date:
-                raise BadTransactionError(
-                    f"Can not update transaction date to {tx.tx_date}: {tx.external_id} {existing}")
-
-        # Amount always > 0 -we use the credit/debit accounts to determine movement direction and add sign appropiatly
-        credit_posting = new_posting(account=tx.credit_account, units=create_amount_from_decimal(-1 * tx.amount))
-        debit_posting = new_posting(account=tx.debit_account, units=create_amount_from_decimal(tx.amount))
-        meta = {**tx.ledger_metadata, "external_id": tx.external_id}
-        if auth_amount is not None:
-            meta["authorisation_amount"] = auth_amount
-        new_tx = new_transaction(date=tx.tx_date, flag="!" if tx.flagged else "*",
-                                 postings=[credit_posting, debit_posting], payee=tx.payee, narration=tx.description,
-                                 meta=meta)
-        diff = transactions_equal(existing, new_tx)
-        status: Literal['none', 'updated', 'new'] = 'none' if not diff else ('updated' if existing is not None else 'new')
-
-        if status == 'updated':
-            logging.info("Updated %s: diff=%s", tx.external_id, diff)
-        self.entries_by_id[tx.external_id] = new_tx
-        return status
-
-    def export_as_string(self) -> str:
-        s = ""
-        for entry in self.entries_by_id.values():
-            s += printer.format_entry(entry) + "\n"
-        return s

@@ -168,6 +168,7 @@ class Config(BaseModel):
     monzoTransactionName: str
     beanFileName: str
     santanderBeanFileName: str
+    accrualBeanFileName: str
     gocardless: GoCardlessConfig
     monzoCustomCategories: dict[str, str] = {}
     accruals: list[AccrualConfig] = []

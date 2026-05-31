@@ -4,6 +4,7 @@ import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
 
+from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from importer.santander_import import SantanderImporter
@@ -91,7 +92,6 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
 
 
 def main():
-
     # settings = env variables (mostly secrets)
     # config = non-secret config from yaml file
     settings = load_settings()
@@ -110,18 +110,22 @@ def main():
         monzo_store = load_monzo_store(minio_client)
         return monzo_store.access_token, monzo_store.refresh_token
 
-    monzo_client = MonzoClient(settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id, get_monzo_tokens)
+    monzo_client = MonzoClient(settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id,
+                               get_monzo_tokens)
 
     # Connection used to manage reqs, importer for importing santander
     gc_connection = GcConnection(gc_client, Store(minio_client, "transactions"), config)
     discord_client = DiscordClient(settings.santander_discord_webhook)
     notifier = Notifier(discord_client)
     santander_importer = SantanderImporter(config, settings.gc_secret_id, settings.gc_secret_key, minio_client)
+    beancount = Beancount(minio_client, config.bucket,
+                          [config.beanFileName, config.santanderBeanFileName, config.accrualBeanFileName])
 
     def start_pika():
         pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
-        message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer, pika_connection,
-                          notifier)
+        message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer,
+                                  pika_connection,
+                                  notifier, beancount)
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
         # backfill_from_beancount(config, pika_connection.channel(), minio_client, "actual-sync.transactions", "ledger", "FY24.bean")
         # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")
@@ -129,7 +133,9 @@ def main():
 
     def start_gc_sync():
         async def start_async():
-            config = uvicorn.Config(create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection), host="0.0.0.0", port=8080, log_level="info")
+            config = uvicorn.Config(
+                create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection),
+                host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()
 
