@@ -41,7 +41,10 @@ class Beancount:
             raise Exception(f"File {file_name} does not exist in editable files")
         return self.beancount_files[file_name].add_or_update(transaction)
 
-    def find_all_by_metadata(self, key: str, value: str) -> list[Transaction]:
+    def delete_transaction(self, file_name: str, external_id: str):
+        self.beancount_files[file_name].delete(external_id)
+
+    def find_all_by_metadata_by_date_desc(self, key: str, value: str) -> list[Transaction]:
         metadata_query = """
             SELECT entry 
             WHERE any_meta('{}') = '{}'
@@ -170,6 +173,12 @@ class BeancountFile:
             logging.info("Updated %s: diff=%s", tx.external_id, diff)
         self.entries_by_id[tx.external_id] = new_tx
         return status
+
+    def delete(self, external_id: str):
+        if external_id not in self.entries_by_id:
+            logging.error("failed to find transaction to delete: %s", external_id)
+            raise Exception("failed to find transaction to delete")
+        del self.entries_by_id[external_id]
 
     def export_as_string(self) -> str:
         s = ""
