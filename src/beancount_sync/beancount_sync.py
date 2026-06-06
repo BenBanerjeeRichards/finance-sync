@@ -12,6 +12,7 @@ import pika
 
 if TYPE_CHECKING:
     from beancount_sync.beancount import Beancount
+    from beancount_sync.accrual import BeancountAccruals
 
 
 # Only consider transactions with two legs: credit and debit
@@ -38,9 +39,10 @@ class BadTransactionError(Exception):
 
 class BeancountSync:
 
-    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection):
+    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection, accrual: BeancountAccruals):
         self.config = config
         self.beancount = beancount
+        self.accrual = accrual
         self.rmq_connection = rmq_connection
         self.channel = self.rmq_connection.channel()
 
@@ -71,7 +73,10 @@ class BeancountSync:
                 except Exception as e:
                     raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
             logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
-            return created, updated
+
+        # Compute any new accrual transactions
+        self.accrual.run_accruals()
+        return created, updated
 
     def _publish_event(self, transaction: BeancountTransaction, exchange: str):
         logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)

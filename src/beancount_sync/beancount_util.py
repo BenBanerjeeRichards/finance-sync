@@ -1,5 +1,9 @@
+import logging
+
 from beancount.core.data import Meta, Posting, Transaction
 from beancount.core.position import Amount, Decimal
+from typing_extensions import Literal
+import datetime
 
 
 def create_amount(pence: int) -> Amount:
@@ -8,6 +12,24 @@ def create_amount(pence: int) -> Amount:
 
 def create_amount_from_decimal(amount: Decimal) -> Amount:
     return Amount.from_string(str(amount) + " GBP")
+
+
+def create_transaction(date: datetime.date, payee: str, credit_account: str, debit_account: str, amount: Decimal,
+                       narration: str = "",
+                       flag: Literal["!", "*"] = "*",
+                       meta: dict | None = None):
+    if amount <= 0:
+        # amount is positive as we use the credit and debit accounts to determine flow
+        logging.error("attempted to create transaction with negative amount: credit=%s debit=%s amount=%s",
+                      credit_account, debit_account, amount)
+        raise ValueError("Amount must be greater than 0")
+
+    credit_posting = new_posting(account=credit_account,
+                                 units=create_amount_from_decimal(-1 * amount))
+    debit_posting = new_posting(account=debit_account,
+                                units=create_amount_from_decimal(amount))
+    return new_transaction(date, flag, [credit_posting, debit_posting], payee,
+                           narration, meta=meta or {})
 
 
 def new_posting(account, units=None, cost=None, price=None, flag=None, meta=None):
@@ -36,6 +58,7 @@ def _comparable_metadata(meta: Meta | None) -> dict:
     disallowed_keys = ['filename', 'lineno', '__tolerances__', 'external_id']
     allowed_keys = [k for k in meta.keys() if k not in disallowed_keys]
     return {k: meta.get(k) for k in allowed_keys}
+
 
 def _compare_postings(old: Posting, to: Posting) -> dict:
     diff = {}

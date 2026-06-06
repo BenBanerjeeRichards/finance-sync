@@ -14,30 +14,48 @@ from mypy.checker_state import contextmanager
 
 from beancount_sync.beancount_sync import BeancountTransaction, BadTransactionError
 from beancount_sync.beancount_util import new_posting, create_amount_from_decimal, new_transaction, transactions_equal
+from beancount import loader
+from beanquery import query
 
 TMP_DIR = Path("/tmp/beancount")
+
 
 # Encapsulates all interactions with beancount files
 class Beancount:
 
-    def __init__(self, minio_client: Minio, ledger_bucket: str, editable_bean_files: list[str]):
+    def __init__(self, minio_client: Minio, ledger_bucket: str, main_ledger_file: str, editable_bean_files: list[str]):
         self.minio_client = minio_client
         self.ledger_bucket = ledger_bucket
         self.editable_bean_files = editable_bean_files
         self.beancount_files: dict[str, BeancountFile] = {}
+        self.main_ledger_file = main_ledger_file
 
         self._cleanup()
         TMP_DIR.mkdir(parents=True, exist_ok=True)
         self._load_beancount_state()
 
-    def create_or_update_transaction(self, file_name: str, transaction: BeancountTransaction) -> Literal['new', 'updated', 'none']:
+    def create_or_update_transaction(self, file_name: str, transaction: BeancountTransaction) -> Literal[
+        'new', 'updated', 'none']:
         if file_name not in self.beancount_files:
             logging.info("attempt to write to file %s not in editable files (%s)", file_name, self.editable_bean_files)
             raise Exception(f"File {file_name} does not exist in editable files")
         return self.beancount_files[file_name].add_or_update(transaction)
 
-    def find_all_by_metadata(self, metadata: dict[str, str]) -> list[BeancountTransaction]:
-        pass
+    def find_all_by_metadata(self, key: str, value: str) -> list[Transaction]:
+        metadata_query = """
+            SELECT entry 
+            WHERE any_meta('{}') = '{}'
+            ORDER BY date DESC
+        """.format(key, value)
+        return self.find_all_by_query(metadata_query)
+
+    def find_all_by_query(self, q: str) -> list[Transaction]:
+        result_types, result_rows = query.run_query(self.entries, self.options_map, q)
+        transactions = [
+            row[0] for row in result_rows
+            if isinstance(row[0], Transaction)
+        ]
+        return transactions
 
     @contextmanager
     def transaction(self):
@@ -86,6 +104,9 @@ class Beancount:
             if obj.object_name in self.editable_bean_files:
                 self.beancount_files[obj.object_name] = BeancountFile(local_file_path.read_text(encoding="utf-8"))
 
+        self.entries, errors, self.options_map = loader.load_file(TMP_DIR / self.main_ledger_file)
+        logging.info("loaded %s entries from %s", len(self.entries), self.main_ledger_file)
+
     def _cleanup(self):
         if TMP_DIR.exists():
             shutil.rmtree(TMP_DIR)
@@ -122,9 +143,11 @@ class BeancountFile:
                 # therefore, if more than is authorised is captured, we need to update the ledger
                 # to at least keep some record, note this change on the metadata and only allow a single change
                 # in practise, few MCCs allow this - e.g. public transport (Lothian buses for example)
-                logging.info(f"Changing amount on entry {tx.external_id} ({tx.payee} - {tx.description or "n/a"}) from {abs(existing_tx_amount)} to {abs(tx.amount)}")
+                logging.info(
+                    f"Changing amount on entry {tx.external_id} ({tx.payee} - {tx.description or "n/a"}) from {abs(existing_tx_amount)} to {abs(tx.amount)}")
                 if existing.meta.get("authorisation_amount") is not None:
-                    raise BadTransactionError(f"{tx.external_id}: Change of transaction amount from {existing_tx_amount} to {tx.amount}, however authorisation_amount was is already set")
+                    raise BadTransactionError(
+                        f"{tx.external_id}: Change of transaction amount from {existing_tx_amount} to {tx.amount}, however authorisation_amount was is already set")
                 auth_amount = existing_tx_amount
             if tx.tx_date != existing.date:
                 raise BadTransactionError(
@@ -140,7 +163,8 @@ class BeancountFile:
                                  postings=[credit_posting, debit_posting], payee=tx.payee, narration=tx.description,
                                  meta=meta)
         diff = transactions_equal(existing, new_tx)
-        status: Literal['none', 'updated', 'new'] = 'none' if not diff else ('updated' if existing is not None else 'new')
+        status: Literal['none', 'updated', 'new'] = 'none' if not diff else (
+            'updated' if existing is not None else 'new')
 
         if status == 'updated':
             logging.info("Updated %s: diff=%s", tx.external_id, diff)

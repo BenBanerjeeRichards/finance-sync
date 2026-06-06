@@ -4,6 +4,7 @@ import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
 
+from beancount_sync.accrual import BeancountAccruals
 from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
@@ -118,14 +119,15 @@ def main():
     discord_client = DiscordClient(settings.santander_discord_webhook)
     notifier = Notifier(discord_client)
     santander_importer = SantanderImporter(config, settings.gc_secret_id, settings.gc_secret_key, minio_client)
-    beancount = Beancount(minio_client, config.bucket,
+    beancount = Beancount(minio_client, config.bucket, config.mainLedgerFile,
                           [config.beanFileName, config.santanderBeanFileName, config.accrualBeanFileName])
+    accrual = BeancountAccruals(beancount, config)
 
     def start_pika():
         pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
         message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
-                                  notifier, beancount)
+                                  notifier, beancount, accrual)
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
         # backfill_from_beancount(config, pika_connection.channel(), minio_client, "actual-sync.transactions", "ledger", "FY24.bean")
         # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")

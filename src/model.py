@@ -152,6 +152,7 @@ class AccrualConfig(BaseModel):
     metadata_key: str   # metadata key that identifies transactions for this
     settlement_months: int  # how many months does a settlement cover. e.g. quarterly bill = 3
     liability_account: str
+    expense_account: str
 
     model_config = {"extra": "forbid"}
 
@@ -172,6 +173,7 @@ class Config(BaseModel):
     gocardless: GoCardlessConfig
     monzoCustomCategories: dict[str, str] = {}
     accruals: list[AccrualConfig] = []
+    mainLedgerFile: str
 
     model_config = {"extra": "forbid"}
 
