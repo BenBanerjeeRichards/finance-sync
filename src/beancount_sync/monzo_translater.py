@@ -61,7 +61,7 @@ class MonzoTranslater:
             amount=amount.number,
             credit_account=credit_account,
             debit_account=debit_account,
-            payee=payee,
+            payee=rule.payee if rule and rule.payee else payee,
             description=description,
             flagged=flagged,
             metadata=tx.model_dump(),
@@ -97,7 +97,7 @@ class MonzoTranslater:
         pot_id = rule.potId
         if pot_id:
             return tx.pot_id == pot_id
-        group_id = rule.merhantGroupId or rule.merchantGroupId
+        group_id = rule.merchantGroupId
         if group_id:
             if tx.merchant and tx.merchant.group_id == group_id:
                 return True

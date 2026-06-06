@@ -44,9 +44,12 @@ class SantanderTranslater:
             debit_account = other_account
             credit_account = cash_account
 
+        payee = account_rule.payee if account_rule.payee else tx.account_name
+
         return BeancountTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount.number,
                                     credit_account=credit_account,
-                                    debit_account=debit_account, payee=tx.account_name or "",
+                                    debit_account=debit_account,
+                                    payee=payee or "",
                                     description=tx.description, flagged=flagged,
                                     metadata=tx.model_dump(), source="santander", ledger_metadata=ledger_metadata)
 

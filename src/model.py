@@ -112,10 +112,10 @@ class MonzoAccountRule(BaseModel):
     accountNumber: str | None = None
     narrative: str | None = None
     groupId: str | None = None
-    merhantGroupId: str | None = None
     merchantGroupId: str | None = None
     counterpartyName: str | None = None
     metadata: dict[str, str] = {}
+    payee: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -131,6 +131,7 @@ class SantanderAccountRule(BaseModel):
     ignore: bool | None = None
     amount: float | None = None
     metadata: dict[str, str] = {}
+    payee: str | None = None
 
     model_config = {"extra": "forbid"}
 
