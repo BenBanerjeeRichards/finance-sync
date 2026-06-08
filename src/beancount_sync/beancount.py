@@ -176,8 +176,8 @@ class BeancountFile:
 
     def delete(self, external_id: str):
         if external_id not in self.entries_by_id:
-            logging.error("failed to find transaction to delete: %s", external_id)
-            raise Exception("failed to find transaction to delete")
+            logging.warning("failed to find transaction to delete: %s", external_id)
+            return
         del self.entries_by_id[external_id]
 
     def export_as_string(self) -> str:

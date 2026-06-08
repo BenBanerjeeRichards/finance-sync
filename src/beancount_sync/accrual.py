@@ -55,10 +55,10 @@ class BeancountAccruals:
                                           payee=settlement.payee,
                                           description=f"{rule.name} - incurred liability",
                                           flagged=False,
-                                          ledger_metadata={}, source="accrual", amount=abs(liability_amounts[i]),
-                                          metadata={
+                                          ledger_metadata={
                                               rule.metadata_key: VALUE_LIABILITY
-                                          })
+                                          }, source="accrual", amount=abs(liability_amounts[i]),
+                                          metadata={})
                 new_transactions.append(tx)
 
         # Delete any provisional liabilities to keep this idempotent
@@ -87,25 +87,26 @@ class BeancountAccruals:
                          most_recent_settlement)
             return
 
-        liability_months = [(most_recent_settlement.date + relativedelta(months=n + 1)).replace(day=1) for n in
-                            range(months_since_last_settlement)]
+        # we include the last settlement month in case settlement occurs often doesn't include that month
+        # this would lead to a gap
+        provisional_liability_months = [(most_recent_settlement.date + relativedelta(months=n)).replace(day=1) for n in
+                            range(months_since_last_settlement+1)]
 
         # Take 10% more than the highest from recent transactions to be slightly pessimistic
         max_recent = max([abs(s.postings[0].units.number) for s in settlements[:4]])
         estimated_amount = Decimal(str(max_recent)) * Decimal('1.10')
         estimated_liability = split_money_decimal(estimated_amount, rule.settlement_months)[0]
-        logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name, liability_months, estimated_liability)
-        for i, liability_date in enumerate(liability_months):
+        logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name, provisional_liability_months, estimated_liability)
+        for i, liability_date in enumerate(provisional_liability_months):
             liability_key = f"provisional-{most_recent_settlement.meta["external_id"]}-{liability_date.isoformat()}"
             tx = BeancountTransaction(external_id=liability_key, tx_date=liability_date,
                                       credit_account=rule.liability_account, debit_account=rule.expense_account,
                                       payee=most_recent_settlement.payee,
                                       description=f"{rule.name} - provisional liability",
                                       flagged=False,
-                                      ledger_metadata={}, source="accrual", amount=abs(estimated_liability),
-                                      metadata={
+                                      ledger_metadata={
                                           rule.metadata_key: VALUE_PROVISIONAL_LIABILITY
-                                      })
+                                      }, source="accrual", amount=abs(estimated_liability))
             new_transactions.append(tx)
 
         with self.beancount.transaction() as beancount_tx:
