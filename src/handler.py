@@ -65,7 +65,7 @@ class Handler:
 
     def __init__(self, config: Config, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
                  santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier,
-                 beancount: Beancount, accrual: BeancountAccruals):
+                 beancount: Beancount):
         self.config = config
         self.minio_client = minio_client
         self.discord_client = discord_client
@@ -76,7 +76,7 @@ class Handler:
         self.notifier = notifier
         self.store = Store(self.minio_client)
         self.beancount = beancount
-        self.beancount_sync = BeancountSync(config, beancount, pika_connection, accrual)
+        self.beancount_sync = BeancountSync(config, beancount, pika_connection)
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):

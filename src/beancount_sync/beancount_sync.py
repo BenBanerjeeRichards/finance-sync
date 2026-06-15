@@ -39,10 +39,10 @@ class BadTransactionError(Exception):
 
 class BeancountSync:
 
-    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection, accrual: BeancountAccruals):
+    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection):
         self.config = config
         self.beancount = beancount
-        self.accrual = accrual
+        self.accrual = BeancountAccruals(self.beancount, config)
         self.rmq_connection = rmq_connection
         self.channel = self.rmq_connection.channel()
 
