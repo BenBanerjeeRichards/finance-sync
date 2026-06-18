@@ -6,7 +6,6 @@ from minio import Minio
 from pydantic import BaseModel
 import logging
 
-from beancount_sync.accrual import BeancountAccruals
 from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import BeancountTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
@@ -76,7 +75,7 @@ class Handler:
         self.notifier = notifier
         self.store = Store(self.minio_client)
         self.beancount = beancount
-        self.beancount_sync = BeancountSync(config, beancount, pika_connection)
+        self.beancount_sync = BeancountSync(config, beancount)
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):

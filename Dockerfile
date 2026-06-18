@@ -2,7 +2,13 @@ FROM python:3.13-alpine as base
 
 FROM base as builder
 
-RUN apk add --no-cache clang bison flex
+RUN apk add --no-cache \
+    build-base \
+    clang \
+    lld \
+    python3-dev \
+    bison \
+    flex
 
 RUN python -m venv /venv
 ENV PATH="/venv/bin:$PATH"

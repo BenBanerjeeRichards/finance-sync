@@ -2,7 +2,7 @@ import datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class Merchant(BaseModel):
@@ -114,6 +114,7 @@ class MonzoAccountRule(BaseModel):
     groupId: str | None = None
     merchantGroupId: str | None = None
     counterpartyName: str | None = None
+    createdGt: datetime.datetime | None = None
     metadata: dict[str, str] = {}
     payee: str | None = None
 
@@ -157,6 +158,25 @@ class AccrualConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+class EnergyConfig(BaseModel):
+    energySyncBaseUrl: str
+    electricityPrepayAccount: str
+    gasPrepayAccount: str
+    electricityExpenseAccount: str
+    gasExpenseAccount: str
+    startMonth: str
+
+    @field_validator("startMonth")
+    @classmethod
+    def validate_start_month(cls, v: str) -> str:
+        try:
+            datetime.datetime.strptime(v, "%Y-%m")
+        except:
+            raise ValueError("Start month must be in YYYY-MM")
+        return v
+
+    model_config = {"extra": "forbid"}
+
 class Config(BaseModel):
     monzoCategoryMappings: dict[str, str]
     accountRules: list[MonzoAccountRule]
@@ -175,6 +195,7 @@ class Config(BaseModel):
     monzoCustomCategories: dict[str, str] = {}
     accruals: list[AccrualConfig] = []
     mainLedgerFile: str
+    energy: EnergyConfig | None = None
 
     model_config = {"extra": "forbid"}
 

@@ -1,5 +1,6 @@
 from typing import Literal
 
+import pika
 from beancount.core.data import Transaction
 from beancount.loader import load_string
 from beancount.parser import printer
@@ -17,18 +18,23 @@ from beancount_sync.beancount_util import new_posting, create_amount_from_decima
 from beancount import loader
 from beanquery import query
 
+from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
+from model import Config
+
 TMP_DIR = Path("/tmp/beancount")
 
 
 # Encapsulates all interactions with beancount files
 class Beancount:
 
-    def __init__(self, minio_client: Minio, ledger_bucket: str, main_ledger_file: str, editable_bean_files: list[str]):
+    def __init__(self, minio_client: Minio, rmq_connection: pika.BlockingConnection, config: Config):
         self.minio_client = minio_client
-        self.ledger_bucket = ledger_bucket
-        self.editable_bean_files = editable_bean_files
+        self.ledger_bucket = config.bucket
+        self.config = config
+        self.editable_bean_files = [config.beanFileName, config.santanderBeanFileName, config.accrualBeanFileName]
         self.beancount_files: dict[str, BeancountFile] = {}
-        self.main_ledger_file = main_ledger_file
+        self.main_ledger_file = config.mainLedgerFile
+        self.channel = rmq_connection.channel()
 
         self._cleanup()
         TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -39,7 +45,12 @@ class Beancount:
         if file_name not in self.beancount_files:
             logging.info("attempt to write to file %s not in editable files (%s)", file_name, self.editable_bean_files)
             raise Exception(f"File {file_name} does not exist in editable files")
-        return self.beancount_files[file_name].add_or_update(transaction)
+        update_type =  self.beancount_files[file_name].add_or_update(transaction)
+        if update_type == 'new':
+            self._publish_event(transaction, EXCHANGE_TX_CREATED)
+        if update_type == 'updated':
+            self._publish_event(transaction, EXCHANGE_TX_UPDATED)
+        return update_type
 
     def delete_transaction(self, file_name: str, external_id: str):
         self.beancount_files[file_name].delete(external_id)
@@ -113,6 +124,10 @@ class Beancount:
     def _cleanup(self):
         if TMP_DIR.exists():
             shutil.rmtree(TMP_DIR)
+
+    def _publish_event(self, transaction: BeancountTransaction, exchange: str):
+        logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)
+        self.channel.basic_publish(exchange, "", body=transaction.model_dump_json())
 
 
 class BeancountFile:

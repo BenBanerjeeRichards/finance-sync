@@ -88,6 +88,9 @@ class MonzoTranslater:
         Core logic for matching rules against transactions
         If a rule item is provided and fails to match, the entire rule fails
         """
+        if rule.createdGt:
+            if tx.created <= rule.createdGt.isoformat():
+                return False
         tags = rule.tags
         if tags:
             return len(set(tags) - set(tx.tags)) < len(set(tags))

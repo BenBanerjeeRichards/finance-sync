@@ -118,11 +118,10 @@ def main():
     discord_client = DiscordClient(settings.santander_discord_webhook)
     notifier = Notifier(discord_client)
     santander_importer = SantanderImporter(config, settings.gc_secret_id, settings.gc_secret_key, minio_client)
-    beancount = Beancount(minio_client, config.bucket, config.mainLedgerFile,
-                          [config.beanFileName, config.santanderBeanFileName, config.accrualBeanFileName])
+    pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
+    beancount = Beancount(minio_client, pika_connection, config)
 
     def start_pika():
-        pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
         message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
                                   notifier, beancount)

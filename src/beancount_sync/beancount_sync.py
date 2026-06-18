@@ -5,14 +5,11 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel
 import logging
 
-from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
 from model import Config
 from decimal import Decimal
-import pika
 
 if TYPE_CHECKING:
     from beancount_sync.beancount import Beancount
-    from beancount_sync.accrual import BeancountAccruals
 
 
 # Only consider transactions with two legs: credit and debit
@@ -39,23 +36,21 @@ class BadTransactionError(Exception):
 
 class BeancountSync:
 
-    def __init__(self, config: Config, beancount: Beancount, rmq_connection: pika.BlockingConnection):
+    def __init__(self, config: Config, beancount: Beancount):
+        from beancount_sync.accrual import BeancountAccruals
+        from beancount_sync.energy_sync import EnergySync
+
         self.config = config
         self.beancount = beancount
         self.accrual = BeancountAccruals(self.beancount, config)
-        self.rmq_connection = rmq_connection
-        self.channel = self.rmq_connection.channel()
+        self.energy_sync = EnergySync(self.config, self.beancount)
 
     def sync(self, ledger_name: str, transactions: list[BeancountTransaction]):
         """"
         Sync the given transactions with the ledger
         For any updates, publish these to the appropiate topics
         """
-        created, updated = self._update_ledger(ledger_name, transactions)
-        for created_tx in created:
-            self._publish_event(created_tx, EXCHANGE_TX_CREATED)
-        for created_tx in updated:
-            self._publish_event(created_tx, EXCHANGE_TX_UPDATED)
+        self._update_ledger(ledger_name, transactions)
 
     def _update_ledger(self, ledger_name: str, transactions: list[BeancountTransaction]) -> tuple[
         list[BeancountTransaction], list[BeancountTransaction]]:
@@ -74,12 +69,8 @@ class BeancountSync:
                     raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
             logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
 
-        # Compute any new accrual transactions
+        # Compute any new accrual transactions & energy
         self.accrual.run_accruals()
+        self.energy_sync.run_energy_sync()
         return created, updated
-
-    def _publish_event(self, transaction: BeancountTransaction, exchange: str):
-        logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)
-        self.channel.basic_publish(exchange, "", body=transaction.model_dump_json())
-
 
