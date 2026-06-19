@@ -67,6 +67,9 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
     channel.queue_declare(queue="monzo-refresh-token", durable=True)
     channel.queue_declare(queue="update-ledger", durable=True)
 
+    # bit lazy... just subscribe from energy sync straight to the update-ledger to force energy to be updated
+    channel.queue_bind("update-ledger", "energy.synced", routing_key="")
+
     # pub/sub for transaction events
     channel.exchange_declare(exchange=EXCHANGE_TX_CREATED, exchange_type="fanout")
     channel.exchange_declare(exchange=EXCHANGE_TX_UPDATED, exchange_type="fanout")
