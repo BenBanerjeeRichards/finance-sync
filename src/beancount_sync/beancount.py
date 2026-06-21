@@ -179,7 +179,7 @@ class BeancountFile:
             meta["authorisation_amount"] = auth_amount
         new_tx = new_transaction(date=tx.tx_date, flag="!" if tx.flagged else "*",
                                  postings=[credit_posting, debit_posting], payee=tx.payee, narration=tx.description,
-                                 meta=meta)
+                                 meta=meta, tags=tx.tags)
         diff = transactions_equal(existing, new_tx)
         status: Literal['none', 'updated', 'new'] = 'none' if not diff else (
             'updated' if existing is not None else 'new')

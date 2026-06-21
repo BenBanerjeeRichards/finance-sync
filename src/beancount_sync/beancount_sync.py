@@ -21,6 +21,7 @@ class BeancountTransaction(BaseModel):
     debit_account: str  # where money goes to
     payee: str  # summary of who is being paid
     description: str  # aka narration - more detail about transaction
+    tags: list[str] = []  # tags added to further categorise e.g. #travel
     flagged: bool = False  # needs attention
     # the full data from the source of this transaction: e.g. monzo api data
     # can be used for more granular information

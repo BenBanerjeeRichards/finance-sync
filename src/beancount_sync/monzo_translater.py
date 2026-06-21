@@ -66,7 +66,8 @@ class MonzoTranslater:
             flagged=flagged,
             metadata=tx.model_dump(),
             source="monzo",
-            ledger_metadata=rule.metadata if rule else {}
+            ledger_metadata=rule.metadata if rule else {},
+            tags=tx.tags
         )
 
     def _get_transaction_accounts(
