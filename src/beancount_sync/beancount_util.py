@@ -90,7 +90,7 @@ def transactions_equal(old: Transaction | None, to: Transaction) -> dict:
         diff["payee"] = {'old': old_payee, 'new': to_payee}
     if old.narration != to.narration:
         diff["narration"] = {'old': old.narration, 'new': to.narration}
-    if old.tags != to.tags:
+    if set(old.tags) != set(to.tags):
         diff["tags"] = {'old': old.tags, 'new': to.tags}
     if old.links != to.links:
         diff["links"] = {'old': old.links, 'new': to.links}
