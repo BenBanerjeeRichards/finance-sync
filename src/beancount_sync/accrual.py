@@ -90,7 +90,7 @@ class BeancountAccruals:
         # we include the last settlement month in case settlement occurs often doesn't include that month
         # this would lead to a gap
         provisional_liability_months = [(most_recent_settlement.date + relativedelta(months=n)).replace(day=1) for n in
-                            range(months_since_last_settlement+1)]
+                            range(months_since_last_settlement)]
 
         # Take 10% more than the highest from recent transactions to be slightly pessimistic
         max_recent = max([abs(s.postings[0].units.number) for s in settlements[:4]])
