@@ -22,7 +22,11 @@ COPY --from=builder /venv /venv
 
 ENV PATH="/venv/bin:$PATH"
 
-COPY src /app
 WORKDIR /app
 
-CMD ["python", "main.py"]
+COPY src /app/src
+
+COPY alembic.ini /app/alembic.ini
+COPY alembic /app/alembic
+
+CMD ["python", "src/main.py"]

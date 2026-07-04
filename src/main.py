@@ -3,6 +3,8 @@ import asyncio
 import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
+from sqlalchemy import Engine, create_engine
+from sqlalchemy.orm import sessionmaker
 
 from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
@@ -32,6 +34,9 @@ logging.basicConfig(
     format="%(levelname)s - %(message)s",
 )
 
+# sqlA module level constants
+engine = create_engine(os.environ["PSQL_CONNECTION_STRING"])
+Session = sessionmaker(engine)
 
 def load_settings() -> Settings:
     rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]
