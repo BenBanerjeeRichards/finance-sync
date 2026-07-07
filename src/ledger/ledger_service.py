@@ -1,4 +1,6 @@
 import uuid
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 from beancount_sync.beancount_sync import BeancountTransaction
 from db.model import Account, Transaction, Entry
@@ -40,10 +42,17 @@ class LedgerService:
             ledger_name_to_id = {l.name: l.id for l in LedgerRepo.get_ledgers(session)}
             ledger_name = ledger_bean_name.split(".")[0]
             transactions = []
+            dt: datetime
+
             for tx in bc_transactions:
-                assert tx.tx_datetime is not None
+                # fallback to midnight if time not available
+                if not tx.tx_datetime:
+                    dt = datetime.combine(tx.tx_date, time.min, tzinfo=ZoneInfo("UTC"))
+                else:
+                    dt = tx.tx_datetime
+
                 transaction = Transaction(id=uuid.uuid4(), ledger_id=ledger_name_to_id[ledger_name],
-                                             transaction_datetime=tx.tx_datetime,
+                                             transaction_datetime=dt,
                                              key=tx.external_id, payee=tx.payee, narration=tx.description,
                                              external_metadata=tx.metadata, tx_metadata=tx.ledger_metadata,
                                              flagged=tx.flagged, tags=tx.tags)

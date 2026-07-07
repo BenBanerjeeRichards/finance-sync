@@ -46,12 +46,14 @@ class SantanderTranslater:
 
         payee = account_rule.payee if account_rule.payee else tx.account_name
 
+        # santander only provides date, currency always GBP (local currency not provided)
         return BeancountTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount.number,
                                     credit_account=credit_account,
                                     debit_account=debit_account,
                                     payee=payee or "",
                                     description=tx.description, flagged=flagged,
-                                    metadata=tx.model_dump(), source="santander", ledger_metadata=ledger_metadata)
+                                    metadata=tx.model_dump(mode="json"), source="santander", ledger_metadata=ledger_metadata,
+                                    local_amount=abs(credit_amount.number), local_currency="GBP")
 
     def _get_santander_account(self, tx: SantanderTransaction) -> SantanderAccountRule | None:
         for rule in self.config.santanderAccountRules:

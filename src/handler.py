@@ -121,6 +121,11 @@ def sync_santander_ledger(config: Config, store: Store, beancount_sync: Beancoun
     ledger_transactions = [tx for tx in mapped_transactions if tx]
     beancount_sync.sync(config.santanderBeanFileName, ledger_transactions)
 
+    from ledger.ledger_service import LedgerService
+
+    logging.info("writing santander to db")
+    ledger = LedgerService(config)
+    ledger.write_beancount_transactions("santander.bean", ledger_transactions)
 
 def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
     monzo_transactions = store.load_list(MONZO_TX_FILE, Transaction)
@@ -130,6 +135,6 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
     beancount_sync.sync(config.beanFileName, ledger_transactions)
     from ledger.ledger_service import LedgerService
 
-    logging.info("writing to db")
+    logging.info("writing monzo to db")
     ledger = LedgerService(config)
     ledger.write_beancount_transactions("monzo.bean", ledger_transactions)
