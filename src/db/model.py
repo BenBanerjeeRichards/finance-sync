@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum as PythonEnum
 from uuid import UUID
 
-from sqlalchemy import Enum as SQLEnum
+from sqlalchemy import Enum as SQLEnum, UniqueConstraint
 from sqlalchemy import ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -115,3 +115,8 @@ class Entry(Base):
     # Relationships
     transaction: Mapped["Transaction"] = relationship(back_populates="entries")
     account: Mapped["Account"] = relationship(back_populates="entries")
+
+    # Limit to a single leg per account to keep things easy when preventing duplicates
+    __table_args__ = (
+        UniqueConstraint("transaction_id", "account_id", name="uq_entries_tx_account"),
+    )

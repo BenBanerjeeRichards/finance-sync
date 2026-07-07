@@ -128,3 +128,8 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
     # We limit start from FY25 as that is only as far back as I have Santander and can be bothered to do the manual postings for
     ledger_transactions = [translater.translate_to_beancount(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     beancount_sync.sync(config.beanFileName, ledger_transactions)
+    from ledger.ledger_service import LedgerService
+
+    logging.info("writing to db")
+    ledger = LedgerService(config)
+    ledger.write_beancount_transactions("monzo.bean", ledger_transactions)

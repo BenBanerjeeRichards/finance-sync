@@ -1,0 +1,85 @@
+import uuid
+
+from beancount_sync.beancount_sync import BeancountTransaction
+from db.model import Account, Transaction, Entry
+from ledger.repo import  AccountType, LedgerRepo, TransactionDto, EntryDto
+from main import Session
+from model import Config
+import logging
+
+
+class LedgerService:
+
+    def __init__(self, config: Config):
+        self.config = config
+
+    def sync_ledger(self):
+        accounts = ([r.account for r in self.config.accountRules] +
+                    [r.accountName for r in self.config.santanderAccountRules] +
+                    list(self.config.monzoCategoryMappings.values())
+                    + [self.config.defaultIncomeAccount,
+                       self.config.defaultExpenseAccount])
+
+        logging.info("ensuring accounts and ledgers")
+        with Session.begin() as session:
+            for acc in accounts:
+                acc = LedgerService._from_beancount_account_name(acc)
+                LedgerRepo.ensure_account(session, acc)
+
+            ledger_names = ["main", "accrual", "FY24", "monzo", "santander"]
+            for l in ledger_names:
+                LedgerRepo.ensure_ledger(session, l)
+
+    def write_beancount_transactions(self, ledger_bean_name: str, bc_transactions: list[BeancountTransaction]):
+        self.sync_ledger()
+        # 1. Create transactions
+        # 2. Create entries, linking to transactions using key -> id
+        # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
+        with Session.begin() as session:
+            account_name_to_id = {acc.name: acc.id for acc in LedgerRepo.get_accounts(session)}
+            ledger_name_to_id = {l.name: l.id for l in LedgerRepo.get_ledgers(session)}
+            ledger_name = ledger_bean_name.split(".")[0]
+            transactions = []
+            for tx in bc_transactions:
+                assert tx.tx_datetime is not None
+                transaction = Transaction(id=uuid.uuid4(), ledger_id=ledger_name_to_id[ledger_name],
+                                             transaction_datetime=tx.tx_datetime,
+                                             key=tx.external_id, payee=tx.payee, narration=tx.description,
+                                             external_metadata=tx.metadata, tx_metadata=tx.ledger_metadata,
+                                             flagged=tx.flagged, tags=tx.tags)
+                transactions.append(transaction)
+
+            transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
+            entries = []
+            active_legs = []
+            for tx in bc_transactions:
+                credit_account = LedgerService._from_beancount_account_name(tx.credit_account).name
+                debit_account = LedgerService._from_beancount_account_name(tx.debit_account).name
+                tx_id = transaction_key_to_id[tx.external_id]
+                credit_entry = Entry(id=uuid.uuid4(), account_id=account_name_to_id[credit_account],
+                                        amount=abs(tx.amount) * -1, local_amount=abs(tx.local_amount) * -1,
+                                        local_currency=tx.local_currency, transaction_id=tx_id)
+                debit_entry = Entry(id=uuid.uuid4(), account_id=account_name_to_id[debit_account],
+                                        amount=abs(tx.amount), local_amount=abs(tx.local_amount),
+                                       local_currency=tx.local_currency, transaction_id=tx_id)
+                entries.append(credit_entry)
+                entries.append(debit_entry)
+                active_legs.append((tx_id, credit_entry.account_id))
+                active_legs.append((tx_id, debit_entry.account_id))
+            LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
+            LedgerRepo.bulk_upsert_entries(session, entries)
+
+
+
+    @staticmethod
+    def _from_beancount_account_name(name: str) -> Account:
+        parts = name.split(":")
+        assert len(parts) >= 2
+        acc_type = {
+            "Expenses": AccountType.EXPENSE,
+            "Assets": AccountType.ASSET,
+            "Liabilities": AccountType.LIABILITY,
+            "Equity": AccountType.EQUITY,
+            "Income": AccountType.INCOME,
+        }.get(parts[0])
+        return Account(name=parts[-1], tags=parts[1:-1], type=acc_type, id=uuid.uuid4())

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import date
+from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 class BeancountTransaction(BaseModel):
     external_id: str  # the banks record of this transaction
     tx_date: date
+    tx_datetime: datetime | None = None
     amount: Decimal
     credit_account: str  # where money comes from
     debit_account: str  # where money goes to
@@ -29,6 +30,8 @@ class BeancountTransaction(BaseModel):
     # Metadata to add directly into the ledger
     ledger_metadata: dict = {}
     source: str = ""
+    local_amount: Decimal | None = None
+    local_currency: str | None = None
 
 
 class BadTransactionError(Exception):
@@ -57,6 +60,10 @@ class BeancountSync:
         list[BeancountTransaction], list[BeancountTransaction]]:
         updated = []
         created = []
+
+        # TODO move elsewhere
+        from ledger.ledger_service import LedgerService
+        LedgerService(self.config).sync_ledger()
 
         with self.beancount.transaction() as beancount_tx:
             for tx in transactions:

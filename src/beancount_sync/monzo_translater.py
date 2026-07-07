@@ -47,6 +47,7 @@ class MonzoTranslater:
             credit_account = cash_account
 
         tx_date = datetime.datetime.fromisoformat(tx.created).date()
+        tx_datetime = datetime.datetime.fromisoformat(tx.created)
 
         merchant_name = None if not tx.merchant else tx.merchant.name
         counterparty_name = None if not tx.counterparty else tx.counterparty.name
@@ -58,6 +59,7 @@ class MonzoTranslater:
         return BeancountTransaction(
             external_id=tx.id,
             tx_date=tx_date,
+            tx_datetime=tx_datetime,
             amount=amount.number,
             credit_account=credit_account,
             debit_account=debit_account,
@@ -67,7 +69,9 @@ class MonzoTranslater:
             metadata=tx.model_dump(),
             source="monzo",
             ledger_metadata=rule.metadata if rule else {},
-            tags=tx.tags
+            tags=tx.tags,
+            local_amount=create_amount(tx.local_amount).number,
+            local_currency=tx.local_currency
         )
 
     def _get_transaction_accounts(
