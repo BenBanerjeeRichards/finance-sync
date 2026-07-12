@@ -12,16 +12,27 @@ import io
 import logging
 
 from mypy.checker_state import contextmanager
+from pydantic import BaseModel
 
 from beancount_sync.beancount_sync import BeancountTransaction, BadTransactionError
 from beancount_sync.beancount_util import new_posting, create_amount_from_decimal, new_transaction, transactions_equal
 from beancount import loader
 from beanquery import query
 
-from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
+from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_UPDATED
 from model import Config
+import hashlib
 
 TMP_DIR = Path("/tmp/beancount")
+
+
+class BeancountExport(BaseModel):
+    contents: str
+    has_changed: bool
+
+
+class LedgerUpdatedEvent(BaseModel):
+    ledger_name: str
 
 
 # Encapsulates all interactions with beancount files
@@ -45,7 +56,7 @@ class Beancount:
         if file_name not in self.beancount_files:
             logging.info("attempt to write to file %s not in editable files (%s)", file_name, self.editable_bean_files)
             raise Exception(f"File {file_name} does not exist in editable files")
-        update_type =  self.beancount_files[file_name].add_or_update(transaction)
+        update_type = self.beancount_files[file_name].add_or_update(transaction)
         if update_type == 'new':
             self._publish_event(transaction, EXCHANGE_TX_CREATED)
         if update_type == 'updated':
@@ -90,7 +101,7 @@ class Beancount:
         logging.info("writing %s files to s3 %s", len(self.beancount_files), self.ledger_bucket)
         for file_name in self.beancount_files:
             new_contents = self.beancount_files[file_name].export_as_string()
-            file_bytes = new_contents.encode("utf-8")
+            file_bytes = new_contents.contents.encode("utf-8")
             file_stream = io.BytesIO(file_bytes)
             file_size = len(file_bytes)
             self.minio_client.put_object(
@@ -100,6 +111,8 @@ class Beancount:
                 length=file_size,
                 content_type="text/plain"
             )
+            if new_contents.has_changed:
+                self._publish_ledger_changed_event(file_name, EXCHANGE_LEDGER_UPDATED)
 
     def _load_beancount_state(self):
         # We need to download all files to we can query our full beancount state
@@ -129,11 +142,18 @@ class Beancount:
         logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)
         self.channel.basic_publish(exchange, "", body=transaction.model_dump_json())
 
+    def _publish_ledger_changed_event(self, ledger: str, exchange: str):
+        logging.info("Sending ledger changed event for ledger %s to exchange %s", ledger, exchange)
+        self.channel.basic_publish(exchange, "", body=LedgerUpdatedEvent(ledger_name=ledger).model_dump_json())
+
 
 class BeancountFile:
 
     def __init__(self, beancount_contents: str):
         entries, errors, options = load_string(beancount_contents)
+        # track if changes have been made
+        # less error-prone than having to track some dirty flag through every change
+        self.initial_hash = self._file_hash(beancount_contents)
         self.entries_by_id: dict[str, Transaction] = {}
         for e in entries:
             ext_id = e.meta.get("external_id")
@@ -195,8 +215,16 @@ class BeancountFile:
             return
         del self.entries_by_id[external_id]
 
-    def export_as_string(self) -> str:
+    def export_as_string(self) -> BeancountExport:
         s = ""
         for entry in self.entries_by_id.values():
             s += printer.format_entry(entry) + "\n"
-        return s
+        new_hash = BeancountFile._file_hash(s)
+        changed = not (new_hash == self.initial_hash)
+        # not sure if this class is the best place for this state
+        self.initial_hash = new_hash
+        return BeancountExport(contents=s, has_changed=changed)
+
+    @staticmethod
+    def _file_hash(contents: str) -> str:
+        return hashlib.sha256(contents.encode('utf-8')).hexdigest()

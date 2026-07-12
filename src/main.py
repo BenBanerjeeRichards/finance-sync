@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
-from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED
+from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_UPDATED
 from importer.santander_import import SantanderImporter
 from model import Settings, Transaction
 import os
@@ -78,6 +78,7 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
     # pub/sub for transaction events
     channel.exchange_declare(exchange=EXCHANGE_TX_CREATED, exchange_type="fanout")
     channel.exchange_declare(exchange=EXCHANGE_TX_UPDATED, exchange_type="fanout")
+    channel.exchange_declare(exchange=EXCHANGE_LEDGER_UPDATED, exchange_type="fanout")
 
     # For santander discord notifications
     channel.queue_declare(queue='transaction.notification', durable=True)
