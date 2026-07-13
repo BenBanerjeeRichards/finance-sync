@@ -1,65 +1,13 @@
 import uuid
-from datetime import datetime
-from decimal import Decimal
-from enum import Enum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import select, delete, tuple_
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session
 import logging
 
-from db.model import Account, Ledger, Transaction, Entry
-
-
-class AccountType(str, Enum):
-    ASSET = "asset"
-    EXPENSE = "expense"
-    LIABILITY = "liability"
-    EQUITY = "equity"
-    INCOME = "income"
-
-
-class LedgerDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
-
-
-class AccountDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    name: str
-    type: AccountType
-    tags: list[str] = Field(default_factory=list)
-
-
-class EntryDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    account_id: UUID
-    transaction_id: UUID
-    amount: Decimal
-    local_amount: Decimal
-    local_currency: str
-
-
-class TransactionDto(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    ledger_id: UUID
-    transaction_datetime: datetime
-    key: str
-    payee: str | None = None
-    narration: str | None = None
-    external_metadata: dict = Field(default_factory=dict)
-    tx_metadata: dict = Field(default_factory=dict, serialization_alias="metadata")
-    flagged: bool = False
-    tags: list[str] = Field(default_factory=list)
+from ledger.model import Account, Ledger, Transaction, Entry
+from ledger.dto import AccountDto, LedgerDto
 
 
 class LedgerRepo:

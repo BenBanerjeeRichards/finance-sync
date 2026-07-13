@@ -3,8 +3,8 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from beancount_sync.beancount_sync import BeancountTransaction
-from db.model import Account, Transaction, Entry
-from ledger.repo import  AccountType, LedgerRepo, TransactionDto, EntryDto
+from ledger.model import Account, Transaction, Entry, AccountType
+from ledger.repo import LedgerRepo
 from main import Session
 from model import Config
 import logging
