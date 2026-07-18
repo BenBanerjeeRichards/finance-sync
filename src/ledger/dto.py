@@ -33,11 +33,11 @@ class EntryDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    account_id: UUID
     transaction_id: UUID
     amount: Decimal
     local_amount: Decimal
     local_currency: str
+    account: AccountDto
 
 
 class TransactionDto(BaseModel):
@@ -53,3 +53,41 @@ class TransactionDto(BaseModel):
     tx_metadata: dict = Field(default_factory=dict, serialization_alias="metadata")
     flagged: bool = False
     tags: list[str] = Field(default_factory=list)
+    entries: list[EntryDto] = Field(default_factory=list)
+
+
+class TransactionListAccountDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    name: str
+
+
+class TransactionListEntryDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    amount: Decimal
+    local_amount: Decimal
+    local_currency: str
+    account: TransactionListAccountDto
+
+
+class TransactionListDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    ledger_id: UUID
+    transaction_datetime: datetime
+    key: str
+    payee: str | None = None
+    narration: str | None = None
+    flagged: bool = False
+    tags: list[str] = Field(default_factory=list)
+    entries: list[TransactionListEntryDto] = Field(default_factory=list)
+
+
+class TransactionListResultDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    transactions: list[TransactionListDto] = Field(default_factory=list)
+    next_cursor: str | None = None
+

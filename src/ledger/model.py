@@ -3,9 +3,10 @@ from decimal import Decimal
 from enum import Enum as PythonEnum
 from uuid import UUID
 
-from sqlalchemy import Enum as SQLEnum, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum, UniqueConstraint, func, DateTime
 from sqlalchemy import ForeignKey, Numeric, String, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -64,7 +65,10 @@ class Transaction(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
     ledger_id: Mapped[UUID] = mapped_column(ForeignKey("ledger.id", ondelete="CASCADE"), index=True)
 
-    transaction_datetime: Mapped[datetime] = mapped_column(index=True)
+    transaction_datetime: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        index=True
+    )
     key: Mapped[str] = mapped_column(index=True, unique=True)
 
     payee: Mapped[str | None] = mapped_column()
@@ -94,6 +98,14 @@ class Transaction(Base):
         back_populates="transaction",
         cascade="all, delete-orphan"
     )
+
+    @hybrid_property
+    def search_vector(self):
+        return func.immutable_transaction_search_vector(
+            self.payee,
+            self.narration,
+            self.tags
+        )
 
 
 class Entry(Base):

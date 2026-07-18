@@ -26,7 +26,6 @@ from scripts.backfill import backfill_monzo, backfill_santander_gc, backfill_fro
 from storage import Store, load_monzo_store
 from notification.discord import DiscordClient
 from model import Config
-from web.web import create_fastapi
 
 # Don't include timestamp, we will just use loki ingestion timestamp
 logging.basicConfig(
@@ -130,6 +129,11 @@ def main():
     pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
     beancount = Beancount(minio_client, pika_connection, config)
 
+    from ledger.ledger_service import LedgerService
+    from web.web import create_fastapi
+
+    ledger_service = LedgerService(config)
+
     def start_pika():
         message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
@@ -142,7 +146,7 @@ def main():
     def start_gc_sync():
         async def start_async():
             config = uvicorn.Config(
-                create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection),
+                create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection, ledger_service),
                 host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()

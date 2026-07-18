@@ -3,17 +3,47 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from beancount_sync.beancount_sync import BeancountTransaction
+from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto
 from ledger.model import Account, Transaction, Entry, AccountType
-from ledger.repo import LedgerRepo
+from ledger.repo import LedgerRepo, TransactionFilters, ListTransactionCursor
 from main import Session
 from model import Config
 import logging
+
 
 
 class LedgerService:
 
     def __init__(self, config: Config):
         self.config = config
+
+    @staticmethod
+    def get_transactions(filters: TransactionFilters, cursor_str: str | None, count: int = 100) -> TransactionListResultDto:
+        with Session.begin() as session:
+            if cursor_str:
+                cursor = ListTransactionCursor.from_b64(cursor_str)
+            else:
+                cursor = None
+            transactions, next_cursor = LedgerRepo.get_transactions(session, filters, cursor=cursor, count=count)
+            tx_dtos =  [TransactionListDto.model_validate(x) for x in transactions]
+            next_cursor_str = next_cursor.to_b64() if next_cursor else None
+            return TransactionListResultDto(transactions=tx_dtos, next_cursor=next_cursor_str)
+
+    @staticmethod
+    def get_payees(term: str | None) -> list[str]:
+        with Session.begin() as session:
+            return LedgerRepo.get_payees(session, term)
+
+    @staticmethod
+    def get_accounts() -> list[AccountDto]:
+        with Session.begin() as session:
+            return LedgerRepo.get_accounts(session)
+
+
+    @staticmethod
+    def get_tags() -> list[str]:
+        with Session.begin() as session:
+            return LedgerRepo.get_tags(session)
 
     def sync_ledger(self):
         accounts = ([r.account for r in self.config.accountRules] +
@@ -52,10 +82,10 @@ class LedgerService:
                     dt = tx.tx_datetime
 
                 transaction = Transaction(id=uuid.uuid4(), ledger_id=ledger_name_to_id[ledger_name],
-                                             transaction_datetime=dt,
-                                             key=tx.external_id, payee=tx.payee, narration=tx.description,
-                                             external_metadata=tx.metadata, tx_metadata=tx.ledger_metadata,
-                                             flagged=tx.flagged, tags=tx.tags)
+                                          transaction_datetime=dt,
+                                          key=tx.external_id, payee=tx.payee, narration=tx.description,
+                                          external_metadata=tx.metadata, tx_metadata=tx.ledger_metadata,
+                                          flagged=tx.flagged, tags=tx.tags)
                 transactions.append(transaction)
 
             transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
@@ -66,19 +96,17 @@ class LedgerService:
                 debit_account = LedgerService._from_beancount_account_name(tx.debit_account).name
                 tx_id = transaction_key_to_id[tx.external_id]
                 credit_entry = Entry(id=uuid.uuid4(), account_id=account_name_to_id[credit_account],
-                                        amount=abs(tx.amount) * -1, local_amount=abs(tx.local_amount) * -1,
-                                        local_currency=tx.local_currency, transaction_id=tx_id)
+                                     amount=abs(tx.amount) * -1, local_amount=abs(tx.local_amount) * -1,
+                                     local_currency=tx.local_currency, transaction_id=tx_id)
                 debit_entry = Entry(id=uuid.uuid4(), account_id=account_name_to_id[debit_account],
-                                        amount=abs(tx.amount), local_amount=abs(tx.local_amount),
-                                       local_currency=tx.local_currency, transaction_id=tx_id)
+                                    amount=abs(tx.amount), local_amount=abs(tx.local_amount),
+                                    local_currency=tx.local_currency, transaction_id=tx_id)
                 entries.append(credit_entry)
                 entries.append(debit_entry)
                 active_legs.append((tx_id, credit_entry.account_id))
                 active_legs.append((tx_id, debit_entry.account_id))
             LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
             LedgerRepo.bulk_upsert_entries(session, entries)
-
-
 
     @staticmethod
     def _from_beancount_account_name(name: str) -> Account:
