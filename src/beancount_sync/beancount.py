@@ -61,6 +61,12 @@ class Beancount:
             self._publish_event(transaction, EXCHANGE_TX_CREATED)
         if update_type == 'updated':
             self._publish_event(transaction, EXCHANGE_TX_UPDATED)
+
+        from ledger.ledger_service import LedgerService
+        # for now just skip monzo + santander as we do all those at the same time during sync
+        if file_name not in [self.config.beanFileName, self.config.santanderBeanFileName]:
+            LedgerService(self.config).write_beancount_transactions(file_name, [transaction])
+
         return update_type
 
     def delete_transaction(self, file_name: str, external_id: str):
