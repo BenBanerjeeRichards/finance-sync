@@ -7,7 +7,7 @@ from pydantic import BaseModel
 import logging
 
 from beancount_sync.beancount import Beancount
-from beancount_sync.beancount_sync import BeancountTransaction, BeancountSync
+from beancount_sync.beancount_sync import SimpleLedgerTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
 from importer.monzo_import import MonzoImporter
@@ -108,8 +108,8 @@ class Handler:
             self.notifier.notify_expiring("GoCardless", self.config.gocardless.startUri, 90 - age_days)
         sync_santander_ledger(self.config, self.store, self.beancount_sync)
 
-    @rmq_handler(BeancountTransaction)
-    def notify_new_transaction(self, tx: BeancountTransaction):
+    @rmq_handler(SimpleLedgerTransaction)
+    def notify_new_transaction(self, tx: SimpleLedgerTransaction):
         if tx.credit_account == self.config.santanderCashAccount or tx.debit_account == self.config.santanderCashAccount:
             self.notifier.send_santander_discord_notification(self.config.santanderCashAccount, tx)
 

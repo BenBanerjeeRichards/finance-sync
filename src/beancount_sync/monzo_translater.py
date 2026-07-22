@@ -1,7 +1,7 @@
 import datetime
 import logging
 
-from beancount_sync.beancount_sync import BeancountTransaction
+from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from beancount_sync.beancount_util import create_amount
 from model import *
 from model import Transaction as MonzoTransaction
@@ -17,7 +17,7 @@ class MonzoTranslater:
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    def translate_to_beancount(self, tx: MonzoTransaction) -> BeancountTransaction:
+    def translate_to_beancount(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.config.monzoCashAccount
         other_account, rule = self._get_transaction_accounts(tx)
         flagged = False
@@ -56,7 +56,7 @@ class MonzoTranslater:
             payee = rule.name
 
         description = "" if not tx.notes else tx.notes
-        return BeancountTransaction(
+        return SimpleLedgerTransaction(
             external_id=tx.id,
             tx_date=tx_date,
             tx_datetime=tx_datetime,

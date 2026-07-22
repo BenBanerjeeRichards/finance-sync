@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from beancount_sync.beancount_sync import BeancountTransaction
+from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto
 from ledger.model import Account, Transaction, Entry, AccountType
@@ -82,7 +82,7 @@ class LedgerService:
             for l in ledger_names:
                 LedgerRepo.ensure_ledger(session, l)
 
-    def write_beancount_transactions(self, ledger_bean_name: str, bc_transactions: list[BeancountTransaction]):
+    def write_beancount_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
         self.sync_ledger()
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id

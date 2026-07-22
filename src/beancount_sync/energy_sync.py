@@ -8,7 +8,7 @@ from pydantic import BaseModel
 import logging
 
 from beancount_sync.beancount import Beancount
-from beancount_sync.beancount_sync import BeancountTransaction
+from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from model import Config
 
 
@@ -63,15 +63,15 @@ class EnergySync:
                 external_id = f"energy_{meter_type}_{month}"  # idempotency key, one reading we update per month
                 reading_date = datetime.datetime.strptime(month, "%Y-%m").date()
                 amount = Decimal(reading_amount) / Decimal("100")
-                tx = BeancountTransaction(external_id=external_id,
-                                          tx_date=reading_date,
-                                          credit_account=asset_account,
-                                          debit_account=expense_account,
-                                          payee=f"Energy consumption ({meter_type})",
-                                          description="",
-                                          flagged=False,
-                                          ledger_metadata={},
-                                          source="energy",
-                                          amount=amount,
-                                          metadata={})
+                tx = SimpleLedgerTransaction(external_id=external_id,
+                                             tx_date=reading_date,
+                                             credit_account=asset_account,
+                                             debit_account=expense_account,
+                                             payee=f"Energy consumption ({meter_type})",
+                                             description="",
+                                             flagged=False,
+                                             ledger_metadata={},
+                                             source="energy",
+                                             amount=amount,
+                                             metadata={})
                 beancount_tx.create_or_update_transaction(self.config.accrualBeanFileName, tx)

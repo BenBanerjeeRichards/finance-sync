@@ -1,5 +1,5 @@
 from beancount_sync.beancount import Beancount
-from beancount_sync.beancount_sync import BeancountTransaction
+from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from model import Config, AccrualConfig
 import logging
 from decimal import Decimal
@@ -37,7 +37,7 @@ class BeancountAccruals:
             logging.warning("No settlements found for rule %s, can't compute any liabilities", rule.metadata_key)
             return
 
-        settlement_transactions: list[BeancountTransaction] = []
+        settlement_transactions: list[SimpleLedgerTransaction] = []
 
         for settlement in settlements:
             settlement_key = settlement.meta.get("external_id")
@@ -51,15 +51,15 @@ class BeancountAccruals:
 
             for i, liability_date in enumerate(liability_months):
                 liability_key = f"{settlement_key}-{liability_date.isoformat()}"
-                tx = BeancountTransaction(external_id=liability_key, tx_date=liability_date,
-                                          credit_account=rule.liability_account, debit_account=rule.expense_account,
-                                          payee=settlement.payee,
-                                          description=f"{rule.name} - incurred liability",
-                                          flagged=False,
-                                          ledger_metadata={
+                tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
+                                             credit_account=rule.liability_account, debit_account=rule.expense_account,
+                                             payee=settlement.payee,
+                                             description=f"{rule.name} - incurred liability",
+                                             flagged=False,
+                                             ledger_metadata={
                                               rule.metadata_key: VALUE_LIABILITY
                                           }, source="accrual", amount=abs(liability_amounts[i]),
-                                          metadata={})
+                                             metadata={})
                 settlement_transactions.append(tx)
 
         with self.beancount.transaction() as beancount_tx:
@@ -94,12 +94,12 @@ class BeancountAccruals:
                      provisional_liability_months, estimated_liability)
         for i, liability_date in enumerate(provisional_liability_months):
             liability_key = f"provisional-{most_recent_settlement.meta["external_id"]}-{liability_date.isoformat()}"
-            tx = BeancountTransaction(external_id=liability_key, tx_date=liability_date,
-                                      credit_account=rule.liability_account, debit_account=rule.expense_account,
-                                      payee=most_recent_settlement.payee,
-                                      description=f"{rule.name} - provisional liability",
-                                      flagged=False,
-                                      ledger_metadata={
+            tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
+                                         credit_account=rule.liability_account, debit_account=rule.expense_account,
+                                         payee=most_recent_settlement.payee,
+                                         description=f"{rule.name} - provisional liability",
+                                         flagged=False,
+                                         ledger_metadata={
                                           rule.metadata_key: VALUE_PROVISIONAL_LIABILITY
                                       }, source="accrual", amount=abs(estimated_liability))
             provisional_transactions.append(tx)

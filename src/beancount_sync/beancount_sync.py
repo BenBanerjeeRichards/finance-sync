@@ -12,8 +12,9 @@ if TYPE_CHECKING:
     from beancount_sync.beancount import Beancount
 
 
-# Only consider transactions with two legs: credit and debit
-class BeancountTransaction(BaseModel):
+# Simple transaction with just two legs
+# This is 99.9% of our transactions and currently 100% of automatically generated ones
+class SimpleLedgerTransaction(BaseModel):
     external_id: str  # the banks record of this transaction
     tx_date: date
     tx_datetime: datetime | None = None
@@ -49,15 +50,15 @@ class BeancountSync:
         self.accrual = BeancountAccruals(self.beancount, config)
         self.energy_sync = EnergySync(self.config, self.beancount)
 
-    def sync(self, ledger_name: str, transactions: list[BeancountTransaction]):
+    def sync(self, ledger_name: str, transactions: list[SimpleLedgerTransaction]):
         """"
         Sync the given transactions with the ledger
         For any updates, publish these to the appropiate topics
         """
         self._update_ledger(ledger_name, transactions)
 
-    def _update_ledger(self, ledger_name: str, transactions: list[BeancountTransaction]) -> tuple[
-        list[BeancountTransaction], list[BeancountTransaction]]:
+    def _update_ledger(self, ledger_name: str, transactions: list[SimpleLedgerTransaction]) -> tuple[
+        list[SimpleLedgerTransaction], list[SimpleLedgerTransaction]]:
         updated = []
         created = []
 

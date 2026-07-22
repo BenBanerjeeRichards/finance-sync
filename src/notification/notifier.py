@@ -1,4 +1,4 @@
-from beancount_sync.beancount_sync import BeancountTransaction
+from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from notification.discord import DiscordClient
 
 
@@ -7,7 +7,7 @@ class Notifier:
     def __init__(self, discord_client: DiscordClient):
         self.discord_client = discord_client
 
-    def send_santander_discord_notification(self, account_name: str, tx: BeancountTransaction) -> None:
+    def send_santander_discord_notification(self, account_name: str, tx: SimpleLedgerTransaction) -> None:
         formatted_amount = f"£{abs(tx.amount):.2f}"
         if tx.debit_account == account_name:
             message = f"💸 Received {formatted_amount} from {tx.payee or tx.description}"

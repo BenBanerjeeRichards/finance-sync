@@ -14,7 +14,7 @@ import logging
 from mypy.checker_state import contextmanager
 from pydantic import BaseModel
 
-from beancount_sync.beancount_sync import BeancountTransaction, BadTransactionError
+from beancount_sync.beancount_sync import SimpleLedgerTransaction, BadTransactionError
 from beancount_sync.beancount_util import new_posting, create_amount_from_decimal, new_transaction, transactions_equal
 from beancount import loader
 from beanquery import query
@@ -51,7 +51,7 @@ class Beancount:
         TMP_DIR.mkdir(parents=True, exist_ok=True)
         self._load_beancount_state()
 
-    def create_or_update_transaction(self, file_name: str, transaction: BeancountTransaction) -> Literal[
+    def create_or_update_transaction(self, file_name: str, transaction: SimpleLedgerTransaction) -> Literal[
         'new', 'updated', 'none']:
         if file_name not in self.beancount_files:
             logging.info("attempt to write to file %s not in editable files (%s)", file_name, self.editable_bean_files)
@@ -144,7 +144,7 @@ class Beancount:
         if TMP_DIR.exists():
             shutil.rmtree(TMP_DIR)
 
-    def _publish_event(self, transaction: BeancountTransaction, exchange: str):
+    def _publish_event(self, transaction: SimpleLedgerTransaction, exchange: str):
         logging.info("Sending beancount for external_id %s to exchange %s", transaction.external_id, exchange)
         self.channel.basic_publish(exchange, "", body=transaction.model_dump_json())
 
@@ -172,7 +172,7 @@ class BeancountFile:
             self.entries_by_id[ext_id] = e
         logging.info("Loaded %s entries from file", len(self.entries_by_id.keys()))
 
-    def add_or_update(self, tx: BeancountTransaction) -> Literal['new', 'updated', 'none']:
+    def add_or_update(self, tx: SimpleLedgerTransaction) -> Literal['new', 'updated', 'none']:
         existing = self.entries_by_id.get(tx.external_id)
         auth_amount = None
         if existing:
