@@ -22,7 +22,6 @@ from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 import multiprocessing
 
-from scripts.backfill import backfill_monzo, backfill_santander_gc, backfill_from_beancount
 from storage import Store, load_monzo_store
 from notification.discord import DiscordClient
 from model import Config

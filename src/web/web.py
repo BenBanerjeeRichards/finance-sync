@@ -2,6 +2,8 @@ import asyncio
 import datetime
 import os
 from pathlib import Path
+from typing import Literal
+from uuid import UUID
 
 import pika
 import uvicorn
@@ -93,13 +95,36 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
     class GetTransactionsParams(BaseModel):
         created_gt: datetime.datetime | None = None
         created_lt: datetime.datetime | None = None
-        account_name: str | None = None
+        account_id: UUID | None = None
         key: str | None = None
         tags: list[str] = Field(Query(default=[]))
         text_filter: str | None = None
         payee: str | None = None
         count: int = 100
         cursor: str | None = None
+
+
+    class GetBalanceParams(BaseModel):
+        created_gt: datetime.datetime | None = None
+        created_lt: datetime.datetime | None = None
+        account_id: UUID | None = None
+        key: str | None = None
+        tags: list[str] = Field(Query(default=[]))
+        text_filter: str | None = None
+        payee: str | None = None
+        account_types: list[str] = Field(Query(default=[]))
+
+
+    class GetBalanceHistoryParams(BaseModel):
+        created_gt: datetime.datetime | None = None
+        created_lt: datetime.datetime | None = None
+        account_id: UUID | None = None
+        key: str | None = None
+        tags: list[str] = Field(Query(default=[]))
+        text_filter: str | None = None
+        payee: str | None = None
+        account_types: list[str] = Field(Query(default=[]))
+        period: Literal["day", "month", "week"]  = "month"
 
     class GetPayeeParams(BaseModel):
         filter: str | None = None
@@ -129,6 +154,19 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         return {
             "tags": ledger_service.get_tags()
         }
+
+    @app.get("/finance/balance")
+    async def get_payee(params: GetBalanceParams = Depends()):
+        filters = TransactionFilters(**params.model_dump())
+        balances = ledger_service.get_balance(filters, params.account_types)
+        return balances.model_dump()
+
+
+    @app.get("/finance/balance_history")
+    async def get_payee(params: GetBalanceHistoryParams = Depends()):
+        filters = TransactionFilters(**params.model_dump())
+        balances = ledger_service.get_balance_history(filters, params.account_types, params.period or "month")
+        return balances.model_dump()
 
     return app
 

@@ -1,22 +1,23 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select, delete, tuple_, or_, func, desc
+from sqlalchemy import select, delete, tuple_, or_, func, desc, Select
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session, defer
 import logging
 
 from ledger.model import Account, Ledger, Transaction, Entry
-from ledger.dto import AccountDto, LedgerDto
+from ledger.dto import AccountDto, LedgerDto, BalancesDto, BalanceEntryDto, PeriodicBalancesDto, PeriodicBalanceEntryDto
 import base64
 
 
 class TransactionFilters(BaseModel):
     created_gt: datetime | None = None
     created_lt: datetime | None = None
-    account_name: str | None = None
+    account_id: uuid.UUID | None = None
     key: str | None = None
     tags: list[str] | None = None
     payee: str | None = None
@@ -52,37 +53,13 @@ class LedgerRepo:
     def get_transactions(session: Session, filters: TransactionFilters,
                          count: int = 100, cursor: ListTransactionCursor | None = None) -> tuple[
         list[Transaction], ListTransactionCursor | None]:
-        if filters.text_filter:
-            q = select(Transaction)
-        else:
-            q = select(Transaction)
+        q = select(Transaction)
 
         q = q.options(defer(Transaction.tx_metadata))
         q = q.options(defer(Transaction.external_metadata))
-
         q = q.join(Transaction.entries).join(Entry.account)
-        if filters.created_gt:
-            q = q.where(Transaction.transaction_datetime >= filters.created_gt)
-        if filters.created_lt:
-            q = q.where(Transaction.transaction_datetime <= filters.created_lt)
-        if filters.key:
-            q = q.where(Transaction.key == filters.key)
-        if filters.tags:
-            q = q.where(Transaction.tags.contains(filters.tags))
-        if filters.payee:
-            q = q.where(Transaction.payee.ilike(f"%{filters.payee}%", escape="/"))
-        if filters.account_name:
-            account = session.scalar(select(Account).where(Account.name.ilike(filters.account_name)))
-            if not account:
-                return [], None
-            q = q.where(Account.id == account.id)
-        if filters.text_filter:
-            q = q.where(or_(
-                Transaction.search_vector.op("%>")(filters.text_filter),
-                Transaction.key == filters.text_filter,
-                Account.name == filters.account_name
-            ))
 
+        q = LedgerRepo._get_transaction_filter_query(q, filters)
         q = q.order_by(Transaction.transaction_datetime.desc(), Transaction.id.desc())
         q = q.distinct().limit(count + 1)  # get next one to determine next cursor
         if cursor:
@@ -93,6 +70,71 @@ class LedgerRepo:
             next_cursor = ListTransactionCursor(created=result[-1].transaction_datetime, id=result[-1].id)
             return result[:count], next_cursor
         return result[:count], None
+
+    @staticmethod
+    def get_balances(session: Session, filters: TransactionFilters, account_types: list[str] = None) -> BalancesDto:
+        q = select(Entry.account_id.label("account_id"), func.sum(Entry.amount).label("balance"))
+        q = q.join(Transaction.entries).join(Entry.account)
+        q = LedgerRepo._get_transaction_filter_query(q, filters)
+        if account_types:
+            q = q.where(Account.type.in_(account_types))
+        q = q.group_by(Entry.account_id)
+        balance_dto = BalancesDto(balances=[])
+        for item in session.execute(q):
+            balance_dto.balances.append(BalanceEntryDto(account_id=item.account_id, amount=item.balance or 0))
+        return balance_dto
+
+
+    @staticmethod
+    def get_balances_over_time(
+            session: Session,
+            filters: TransactionFilters,
+            account_types: list[str] = None,
+            granularity: Literal["day", "month", "week"] = "month"
+    ) -> PeriodicBalancesDto:
+        period_col = func.date_trunc(granularity, Transaction.transaction_datetime).label("period")
+        q = select(
+            Entry.account_id.label("account_id"),
+            period_col,
+            func.sum(Entry.amount).label("balance"))
+        q = q.join(Entry.transaction).join(Entry.account)
+        q = LedgerRepo._get_transaction_filter_query(q, filters)
+        if account_types:
+            q = q.where(Account.type.in_(account_types))
+        q = q.group_by(Entry.account_id, period_col).order_by(period_col.asc())
+        results = session.execute(q).all()
+        return PeriodicBalancesDto(
+            balances=[
+                PeriodicBalanceEntryDto(
+                    account_id=item.account_id,
+                    period=item.period,
+                    amount=item.balance or 0
+                )
+                for item in results
+            ]
+        )
+
+    @staticmethod
+    def _get_transaction_filter_query(q: Select[tuple[Transaction]], filters: TransactionFilters) -> Select[tuple[Transaction]]:
+        if filters.created_gt:
+            q = q.where(Transaction.transaction_datetime >= filters.created_gt)
+        if filters.created_lt:
+            q = q.where(Transaction.transaction_datetime <= filters.created_lt)
+        if filters.key:
+            q = q.where(Transaction.key == filters.key)
+        if filters.tags:
+            q = q.where(Transaction.tags.contains(filters.tags))
+        if filters.payee:
+            q = q.where(Transaction.payee.ilike(f"%{filters.payee}%", escape="/"))
+        if filters.account_id:
+            q = q.where(Account.id == filters.account_id)
+        if filters.text_filter:
+            q = q.where(or_(
+                Transaction.search_vector.op("%>")(filters.text_filter),
+                Transaction.key == filters.text_filter
+            ))
+        return q
+
 
     @staticmethod
     def get_payees(session: Session, filter: str | None = None) -> list[str]:
@@ -110,7 +152,7 @@ class LedgerRepo:
     @staticmethod
     def ensure_account(session: Session, acc: Account):
         st = insert(Account).values(name=acc.name, type=acc.type, tags=acc.tags, id=acc.id).on_conflict_do_nothing(
-            index_elements=["name"])
+            index_elements=["name", "account_type"])
         session.execute(st)
 
     @staticmethod

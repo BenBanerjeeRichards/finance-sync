@@ -44,7 +44,7 @@ class Account(Base):
     __tablename__ = "account"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
-    name: Mapped[str] = mapped_column(unique=True)
+    name: Mapped[str] = mapped_column()
     type: Mapped[AccountType] = mapped_column(SQLEnum(AccountType), name="account_type")
 
     tags: Mapped[list[str]] = mapped_column(
@@ -55,7 +55,10 @@ class Account(Base):
 
     # Relationships
     entries: Mapped[list["Entry"]] = relationship(back_populates="account")
-
+    # allows for us to have e.g. a Factor liability account and a Factor expense account
+    __table_args__ = (
+        UniqueConstraint("name", "account_type", name="uq_name_and_type"),
+    )
 
 class Transaction(Base):
     """A financial transaction holding metadata and linking multiple entries."""

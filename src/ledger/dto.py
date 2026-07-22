@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -91,3 +92,24 @@ class TransactionListResultDto(BaseModel):
     transactions: list[TransactionListDto] = Field(default_factory=list)
     next_cursor: str | None = None
 
+
+class BalanceEntryDto(BaseModel):
+    account_id: uuid.UUID
+    amount: Decimal
+
+
+class BalancesDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    balances: list[BalanceEntryDto]
+
+
+class PeriodicBalanceEntryDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    account_id: uuid.UUID
+    period: datetime
+    amount: Decimal
+
+class PeriodicBalancesDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    balances: list[PeriodicBalanceEntryDto]
