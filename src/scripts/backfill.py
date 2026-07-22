@@ -18,7 +18,7 @@ def backfill_monzo(config: Config, ch: BlockingChannel, minio_client: minio.Mini
     translater = MonzoTranslater(config)
     ledger_transactions = [translater.translate_to_beancount(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     if in_only:
-        ledger_transactions = [tx for tx in  ledger_transactions if tx.debit_account == "Assets:Cash:Monzo"]
+        ledger_transactions = [tx for tx in ledger_transactions if tx.debit_account == "Assets:Cash:Monzo"]
     backfill_transactions(ch, routing_key, ledger_transactions)
 
 
@@ -70,6 +70,8 @@ def backfill_from_beancount(config: Config, ch: BlockingChannel, minio_client: m
                                   source="beancount_file")
         bc_txs.append(bc)
     backfill_transactions(ch, route, bc_txs)
+
+
 
 def backfill_transactions(ch: BlockingChannel, routing: str, transactions: list[BeancountTransaction]) -> None:
     logging.info("Submitting %s transactions to routing key %s for backfill purposes", len(transactions), routing)
