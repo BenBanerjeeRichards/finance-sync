@@ -2,14 +2,14 @@ import datetime
 import uuid
 
 from pydantic import BaseModel
-from sqlalchemy import update
+from sqlalchemy import update, select
 from sqlalchemy.dialects.postgresql import insert
 
 from ledger.model import MonzoImportIntegration
 from main import Session
 
 
-class MonzoImporterDto(BaseModel):
+class MonzoImportIntegrationDto(BaseModel):
     access_token: str | None
     refresh_token: str | None
     client_id: str
@@ -23,7 +23,8 @@ class MonzoService:
     @staticmethod
     def create_monzo_import_if_not_exists(client_id: str, client_secret: str, monzo_account_id: str):
         with Session.begin() as session:
-            stmt = insert(MonzoImportIntegration).values(id=uuid.uuid4(), client_id=client_id, client_secret=client_secret,
+            stmt = insert(MonzoImportIntegration).values(id=uuid.uuid4(), client_id=client_id,
+                                                         client_secret=client_secret,
                                                          account_id=monzo_account_id)
             stmt = stmt.on_conflict_do_nothing(index_elements=["client_id"])
             session.execute(stmt)
@@ -32,5 +33,25 @@ class MonzoService:
     def update_tokens(client_id: str, access_token: str, refresh_token: str):
         with Session.begin() as session:
             stmt = update(MonzoImportIntegration).where(MonzoImportIntegration.client_id == client_id).values(
-                access_token=access_token, refresh_token=refresh_token, active_at=datetime.datetime.now(tz=datetime.timezone.utc))
+                access_token=access_token, refresh_token=refresh_token,
+                active_at=datetime.datetime.now(tz=datetime.timezone.utc))
             session.execute(stmt)
+
+    @staticmethod
+    def get_config(client_id: str) -> MonzoImportIntegrationDto:
+        with Session.begin() as session:
+            q = select(MonzoImportIntegration).where(
+                MonzoImportIntegration.client_id == client_id
+            )
+            res = session.execute(q).scalar_one_or_none()
+
+            if not res:
+                raise ValueError(f"No monzo config found for client {client_id}")
+
+            return MonzoImportIntegrationDto(
+                client_id=res.client_id,
+                client_secret=res.client_secret,
+                access_token=res.access_token,
+                refresh_token=res.refresh_token,
+                active_at=res.active_at.isoformat() if res.active_at else None,
+            )

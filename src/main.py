@@ -124,9 +124,8 @@ def main():
                                  config.gocardless.redirectUri)
 
     def get_monzo_tokens() -> tuple[str, str]:
-        # Always request tokens from minio to prevent issues with keeping state inside MonzoClient
-        monzo_store = load_monzo_store(minio_client)
-        return monzo_store.access_token, monzo_store.refresh_token
+        cfg = MonzoService.get_config(settings.monzo_client_id)
+        return cfg.access_token, cfg.refresh_token
 
     monzo_client = MonzoClient(settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id,
                                get_monzo_tokens)
