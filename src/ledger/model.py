@@ -135,3 +135,17 @@ class Entry(Base):
     __table_args__ = (
         UniqueConstraint("transaction_id", "account_id", name="uq_entries_tx_account"),
     )
+
+
+class MonzoImportIntegration(Base):
+    __tablename__ = "monzo_importer"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    # use monzo client id as unique constraint as it does not make sense to have duplicate importers
+    client_id: Mapped[str] = mapped_column(unique=True)
+    client_secret: Mapped[str] = mapped_column()
+    account_id: Mapped[str]= mapped_column()
+    access_token: Mapped[str | None] = mapped_column()
+    refresh_token: Mapped[str | None] = mapped_column()
+    # Datetime representing latest refresh success, if failure this becomes None
+    active_at: Mapped[datetime | None] = mapped_column()

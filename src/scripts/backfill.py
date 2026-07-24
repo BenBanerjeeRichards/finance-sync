@@ -16,7 +16,7 @@ import hashlib
 def backfill_monzo(config: Config, ch: BlockingChannel, minio_client: minio.Minio, routing_key: str, in_only=False):
     monzo_transactions = Store(minio_client, "transactions").load_list(MONZO_TX_FILE, Transaction)
     translater = MonzoTranslater(config)
-    ledger_transactions = [translater.translate_to_beancount(tx) for tx in monzo_transactions if tx.created > "2024-04"]
+    ledger_transactions = [translater.translate_to_ledger(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     if in_only:
         ledger_transactions = [tx for tx in ledger_transactions if tx.debit_account == "Assets:Cash:Monzo"]
     backfill_transactions(ch, routing_key, ledger_transactions)

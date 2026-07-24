@@ -12,7 +12,7 @@ from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
 from importer.monzo_import import MonzoImporter
 from importer.santander_import import SantanderImporter
-from model import Transaction, MonzoStore, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions
+from model import Transaction, MonzoStore, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions, Settings
 from monzo import MonzoClient
 from notification.notifier import Notifier
 from santander import from_gc
@@ -62,10 +62,11 @@ class Handler:
     Main entry point for all tasks triggered from RMQ
     """
 
-    def __init__(self, config: Config, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
+    def __init__(self, config: Config,settings: Settings, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
                  santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier,
                  beancount: Beancount):
         self.config = config
+        self.settings = settings
         self.minio_client = minio_client
         self.discord_client = discord_client
         self.monzo_client = monzo_client
@@ -90,10 +91,13 @@ class Handler:
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
+        from importer.monzo_service import MonzoService
+
         logging.info("Refreshing monzo token")
         access, refresh = self.monzo_client.get_access_token()
         new_store = MonzoStore(access_token=access, refresh_token=refresh)
         write_monzo_store(self.minio_client, new_store)
+        MonzoService.update_tokens(self.settings.monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
@@ -131,10 +135,11 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
     monzo_transactions = store.load_list(MONZO_TX_FILE, Transaction)
     translater = MonzoTranslater(config)
     # We limit start from FY25 as that is only as far back as I have Santander and can be bothered to do the manual postings for
-    ledger_transactions = [translater.translate_to_beancount(tx) for tx in monzo_transactions if tx.created > "2024-04"]
-    beancount_sync.sync(config.beanFileName, ledger_transactions)
+    ledger_transactions = [translater.translate_to_ledger(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     from ledger.ledger_service import LedgerService
 
-    logging.info("writing monzo to db")
     ledger = LedgerService(config)
+    logging.info("writing monzo to db (%s)", len(ledger_transactions))
     ledger.write_beancount_transactions("monzo.bean", ledger_transactions)
+
+    beancount_sync.sync(config.beanFileName, ledger_transactions)

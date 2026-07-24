@@ -84,11 +84,13 @@ class LedgerService:
 
     def write_beancount_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
         self.sync_ledger()
+        import time as t_time
+        start = t_time.time()
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
         with Session.begin() as session:
-            all_accounts = LedgerRepo.get_accounts(session)
+            all_accounts = LedgerRepo.get_accounts(session) # very small list
             ledger_name_to_id = {l.name: l.id for l in LedgerRepo.get_ledgers(session)}
             ledger_name = ledger_bean_name.split(".")[0]
             transactions = []
@@ -111,13 +113,14 @@ class LedgerService:
             transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
             entries = []
             active_legs = []
-            local_amount = tx.local_amount
-            local_currency = tx.local_currency
-            if not local_amount:
-                local_amount = tx.amount
-                local_currency = "GBP"
 
             for tx in bc_transactions:
+                local_amount = tx.local_amount
+                local_currency = tx.local_currency
+                if not local_amount:
+                    local_amount = tx.amount
+                    local_currency = "GBP"
+
                 credit_account = LedgerService._from_beancount_account_name(tx.credit_account)
                 debit_account = LedgerService._from_beancount_account_name(tx.debit_account)
                 tx_id = transaction_key_to_id[tx.external_id]
@@ -137,6 +140,8 @@ class LedgerService:
                 active_legs.append((tx_id, debit_entry.account_id))
             LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
             LedgerRepo.bulk_upsert_entries(session, entries)
+        duration = int((t_time.time() - start) * 1000)
+        logging.info("synced transactions to ledger {} in {}ms".format(ledger_name, duration))
 
     @staticmethod
     def compute_key(dt: datetime, payee: str, narration: str, amount: Decimal) -> str:

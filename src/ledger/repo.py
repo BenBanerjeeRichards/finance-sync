@@ -219,3 +219,5 @@ class LedgerRepo:
             tuple_(Entry.transaction_id, Entry.account_id).not_in(tx_acc_ids))
         res = session.execute(cleanup)
         logging.info("cleanup cleaned %s ledger entries", res.rowcount)
+
+

@@ -29,11 +29,16 @@ from model import Config
 # Don't include timestamp, we will just use loki ingestion timestamp
 logging.basicConfig(
     level=logging.INFO,
-    format="%(levelname)s - %(message)s",
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 # sqlA module level constants
-engine = create_engine(os.environ["PSQL_CONNECTION_STRING"])
+
+engine = create_engine(
+    os.environ["PSQL_CONNECTION_STRING"],
+    executemany_mode="values_plus_batch",
+    executemany_batch_page_size=1000,
+)
 Session = sessionmaker(engine)
 
 def load_settings() -> Settings:
@@ -99,10 +104,16 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
 
 
 def main():
+    from importer.monzo_service import MonzoService
+
     # settings = env variables (mostly secrets)
     # config = non-secret config from yaml file
     settings = load_settings()
     config = Config(**yaml.safe_load(open(settings.config_path)))
+    # bootstrap monzo
+    MonzoService.create_monzo_import_if_not_exists(client_id=settings.monzo_client_id,
+                                                   client_secret=settings.monzo_client_secret,
+                                                   monzo_account_id=settings.monzo_account_id)
 
     # Actually miss DI a bit here...
     minio_client = minio.Minio(endpoint=settings.minio_endpoint, secure=settings.minio_secure,
@@ -134,7 +145,7 @@ def main():
     ledger_service = LedgerService(config)
 
     def start_pika():
-        message_handler = Handler(config, minio_client, discord_client, monzo_client, santander_importer,
+        message_handler = Handler(config, settings,minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
                                   notifier, beancount)
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)

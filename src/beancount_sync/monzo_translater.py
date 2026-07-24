@@ -17,7 +17,7 @@ class MonzoTranslater:
     def __init__(self, config: Config) -> None:
         self.config = config
 
-    def translate_to_beancount(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
+    def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.config.monzoCashAccount
         other_account, rule = self._get_transaction_accounts(tx)
         flagged = False
