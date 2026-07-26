@@ -149,3 +149,12 @@ class MonzoImportIntegration(Base):
     refresh_token: Mapped[str | None] = mapped_column()
     # Datetime representing latest refresh success, if failure this becomes None
     active_at: Mapped[datetime | None] = mapped_column()
+
+
+class GoCardlessImportIntegration(Base):
+    __tablename__ = "go_cardless_importer"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    secret_id: Mapped[str] = mapped_column(unique=True)
+    secret_key: Mapped[str] = mapped_column()
+    requisition_expires_at: Mapped[datetime | None] = mapped_column()

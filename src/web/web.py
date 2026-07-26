@@ -1,13 +1,14 @@
 import asyncio
 import datetime
 import os
+import uuid
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
 import pika
 import uvicorn
-from fastapi import FastAPI, Request, Depends, Query
+from fastapi import FastAPI, Request, Depends, Query, HTTPException
 from minio import Minio
 from pika.adapters.blocking_connection import BlockingChannel
 from pydantic import BaseModel, Field
@@ -134,6 +135,14 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         filters = TransactionFilters(**params.model_dump())
         txs = ledger_service.get_transactions(filters, params.cursor, params.count)
         return txs.model_dump()
+
+    @app.get("/finance/transactions/{transaction_id}")
+    async def get_transactions(transaction_id: uuid.UUID):
+        tx = ledger_service.get_transaction(transaction_id)
+        if not tx:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        return tx.model_dump()
+
 
     @app.get("/finance/payee")
     async def get_payee(params: GetPayeeParams = Depends()):

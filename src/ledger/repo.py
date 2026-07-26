@@ -49,6 +49,12 @@ class LedgerRepo:
     def get_ledgers(session) -> list[LedgerDto]:
         return [LedgerDto.model_validate(l) for l in session.scalars(select(Ledger))]
 
+
+    @staticmethod
+    def get_transaction_by_id(session: Session, id: uuid.UUID) -> Transaction | None:
+        q = select(Transaction).where(Transaction.id == id)
+        return session.execute(q).scalar_one_or_none()
+
     @staticmethod
     def get_transactions(session: Session, filters: TransactionFilters,
                          count: int = 100, cursor: ListTransactionCursor | None = None) -> tuple[

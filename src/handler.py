@@ -91,13 +91,13 @@ class Handler:
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
-        from importer.monzo_service import MonzoService
+        from importer.import_service import ImportService
 
         logging.info("Refreshing monzo token")
         access, refresh = self.monzo_client.get_access_token()
         new_store = MonzoStore(access_token=access, refresh_token=refresh)
         write_monzo_store(self.minio_client, new_store)
-        MonzoService.update_tokens(self.settings.monzo_client_id, access, refresh)
+        ImportService.update_monzo_tokens(self.settings.monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
@@ -107,7 +107,7 @@ class Handler:
     @rmq_handler()
     def on_santander_sync_transactions(self):
         self.santander_import.import_transactions()
-        age_days = self.santander_import.requisition_oldest_days()
+        age_days = self.santander_import.update_expires_dates()
         if age_days >= self.config.gocardless.notifyOlderThan:
             self.notifier.notify_expiring("GoCardless", self.config.gocardless.startUri, 90 - age_days)
         sync_santander_ledger(self.config, self.store, self.beancount_sync)

@@ -10,7 +10,7 @@ from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_UPDATED
 from importer.santander_import import SantanderImporter
-from model import Settings, Transaction
+from model import Settings
 import os
 import minio
 import pika
@@ -40,6 +40,7 @@ engine = create_engine(
     executemany_batch_page_size=1000,
 )
 Session = sessionmaker(engine)
+
 
 def load_settings() -> Settings:
     rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]
@@ -104,17 +105,12 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
 
 
 def main():
-    from importer.monzo_service import MonzoService
+    from importer.import_service import ImportService
 
     # settings = env variables (mostly secrets)
     # config = non-secret config from yaml file
     settings = load_settings()
     config = Config(**yaml.safe_load(open(settings.config_path)))
-    # bootstrap monzo
-    MonzoService.create_monzo_import_if_not_exists(client_id=settings.monzo_client_id,
-                                                   client_secret=settings.monzo_client_secret,
-                                                   monzo_account_id=settings.monzo_account_id)
-
     # Actually miss DI a bit here...
     minio_client = minio.Minio(endpoint=settings.minio_endpoint, secure=settings.minio_secure,
                                access_key=settings.minio_access,
@@ -124,7 +120,7 @@ def main():
                                  config.gocardless.redirectUri)
 
     def get_monzo_tokens() -> tuple[str, str]:
-        cfg = MonzoService.get_config(settings.monzo_client_id)
+        cfg = ImportService.get_monzo_config(settings.monzo_client_id)
         return cfg.access_token, cfg.refresh_token
 
     monzo_client = MonzoClient(settings.monzo_client_id, settings.monzo_client_secret, settings.monzo_account_id,
@@ -144,7 +140,7 @@ def main():
     ledger_service = LedgerService(config)
 
     def start_pika():
-        message_handler = Handler(config, settings,minio_client, discord_client, monzo_client, santander_importer,
+        message_handler = Handler(config, settings, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
                                   notifier, beancount)
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
@@ -155,7 +151,8 @@ def main():
     def start_gc_sync():
         async def start_async():
             config = uvicorn.Config(
-                create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection, ledger_service),
+                create_fastapi(monzo_client, minio_client, settings.rabbitmq_connection_string, gc_connection,
+                               ledger_service),
                 host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()

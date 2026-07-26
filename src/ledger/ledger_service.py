@@ -34,6 +34,15 @@ class LedgerService:
             return TransactionListResultDto(transactions=tx_dtos, next_cursor=next_cursor_str)
 
     @staticmethod
+    def get_transaction(tx_id: uuid.UUID) -> TransactionDto | None:
+        with Session.begin() as session:
+            tx = LedgerRepo.get_transaction_by_id(session, tx_id)
+            if not tx:
+                return None
+            return TransactionDto.model_validate(tx)
+
+
+    @staticmethod
     def get_payees(term: str | None) -> list[str]:
         with Session.begin() as session:
             return LedgerRepo.get_payees(session, term)
