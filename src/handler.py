@@ -95,8 +95,6 @@ class Handler:
 
         logging.info("Refreshing monzo token")
         access, refresh = self.monzo_client.get_access_token()
-        new_store = MonzoStore(access_token=access, refresh_token=refresh)
-        write_monzo_store(self.minio_client, new_store)
         ImportService.update_monzo_tokens(self.settings.monzo_client_id, access, refresh)
 
     @rmq_handler()

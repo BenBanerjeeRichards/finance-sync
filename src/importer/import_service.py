@@ -5,11 +5,12 @@ from pydantic import BaseModel
 from sqlalchemy import update, select
 from sqlalchemy.dialects.postgresql import insert
 
-from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration
+from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule
 from main import Session
 
 
 class MonzoImportIntegrationDto(BaseModel):
+    id: uuid.UUID
     access_token: str | None
     refresh_token: str | None
     client_id: str
@@ -18,9 +19,31 @@ class MonzoImportIntegrationDto(BaseModel):
 
 
 class GcImportIntegrationDto(BaseModel):
+    id: uuid.UUID
     secret_id: str | None
     secret_key: str | None
     requisition_expires_at: datetime.datetime | None = None
+    # GC is now closed to new bank accounts so we don't need to support any more than santander
+    kind: str = "santander"
+
+
+class MonzoImportRuleDto(BaseModel):
+    id: uuid.UUID
+    import_integration_id: uuid.UUID
+    name: str
+    priority: int
+    account_id: uuid.UUID
+    payee: str | None = None
+    narration: str | None = None
+    created_at: datetime.datetime | None = None
+    category: str | None = None
+    account_number: str | None = None
+    tags: list[str] = []
+    pot_id: str | None = None
+    merchant_group_id: str | None = None
+    counterparty_name: str | None = None
+    transaction_id: uuid.UUID | None = None
+    metadata: dict[str, str] = {}
 
 
 # don't bother with repo for now as this is so simple
@@ -63,12 +86,43 @@ class ImportService:
                 raise ValueError(f"No monzo config found for client {client_id}")
 
             return MonzoImportIntegrationDto(
+                id=res.id,
                 client_id=res.client_id,
                 client_secret=res.client_secret,
                 access_token=res.access_token,
                 refresh_token=res.refresh_token,
                 active_at=res.active_at.isoformat() if res.active_at else None,
             )
+
+    @staticmethod
+    def get_monzo_configs() -> list[MonzoImportIntegrationDto]:
+        with Session.begin() as session:
+            q = select(MonzoImportIntegration)
+            results = session.execute(q).scalars()
+
+            return [MonzoImportIntegrationDto(
+                id=res.id,
+                client_id=res.client_id,
+                client_secret=res.client_secret,
+                access_token=res.access_token,
+                refresh_token=res.refresh_token,
+                active_at=res.active_at.isoformat() if res.active_at else None,
+            ) for res in results]
+
+
+    @staticmethod
+    def get_gc_configs() -> list[GcImportIntegrationDto]:
+        with Session.begin() as session:
+            q = select(GoCardlessImportIntegration)
+            results = session.execute(q).scalars()
+
+            return [GcImportIntegrationDto(
+                id=res.id,
+                secret_id=res.secret_id,
+                secret_key=res.secret_key,
+                requisition_expires_at=res.requisition_expires_at,
+            ) for res in results]
+
 
     @staticmethod
     def get_santander_config(secret_id: str) -> GcImportIntegrationDto:
@@ -82,8 +136,9 @@ class ImportService:
                 raise ValueError(f"No santander config found for client {secret_id}")
 
             return GcImportIntegrationDto(
-                secret_id=res.client_id,
-                secret_key=res.client_secret,
+                id=res.id,
+                secret_id=res.secret_id,
+                secret_key=res.secret_key,
                 requisition_expires_at=res.requisition_expires_at,
             )
 
@@ -93,3 +148,30 @@ class ImportService:
             stmt = update(GoCardlessImportIntegration).where(GoCardlessImportIntegration.secret_id == secret_id).values(
                 requisition_expires_at=dt)
             session.execute(stmt)
+
+    @staticmethod
+    def get_monzo_import_rules(import_integration_id: uuid.UUID) -> list[MonzoImportRuleDto]:
+        with Session.begin() as session:
+            q = select(MonzoImportRule).where(
+                MonzoImportRule.import_integration_id == import_integration_id
+            ).order_by(MonzoImportRule.priority)
+            results = session.execute(q).scalars()
+
+            return [MonzoImportRuleDto(
+                id=r.id,
+                import_integration_id=r.import_integration_id,
+                name=r.name,
+                priority=r.priority,
+                account_id=r.account_id,
+                payee=r.payee,
+                narration=r.narration,
+                created_at=r.created_at,
+                category=r.category,
+                account_number=r.account_number,
+                tags=r.tags,
+                pot_id=r.pot_id,
+                merchant_group_id=r.merchant_group_id,
+                counterparty_name=r.counterparty_name,
+                transaction_id=r.transaction_id,
+                metadata=r.new_metadata,
+            ) for r in results]

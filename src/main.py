@@ -22,7 +22,7 @@ from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 import multiprocessing
 
-from storage import Store, load_monzo_store
+from storage import Store
 from notification.discord import DiscordClient
 from model import Config
 
@@ -146,6 +146,8 @@ def main():
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
         # backfill_from_beancount(config, pika_connection.channel(), minio_client, "actual-sync.transactions", "ledger", "FY24.bean")
         # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")
+        # from scripts.backfill_import_rules import backfill_monzo_import_rules
+        # backfill_monzo_import_rules(config, settings.monzo_client_id)
         listen_for_updates(pika_connection, message_handler)
 
     def start_gc_sync():

@@ -40,10 +40,6 @@ def load_monzo_store(minio_client: minio.Minio) -> MonzoStore:
     return MonzoStore(**load_file(minio_client, BUCKET, STORE_FILE))
 
 
-def write_monzo_store(minio_client: minio.Minio, store: MonzoStore):
-    write_file(minio_client, BUCKET, STORE_FILE, store.json())
-
-
 def load_gc_store(minio_client: minio.Minio) -> GcStore:
     return GcStore(**load_file(minio_client, BUCKET, GC_STORE_FILE))
 

@@ -151,6 +151,47 @@ class MonzoImportIntegration(Base):
     active_at: Mapped[datetime | None] = mapped_column()
 
 
+class MonzoImportRule(Base):
+    __tablename__ = "monzo_import_rule"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    import_integration_id: Mapped[UUID] = mapped_column(ForeignKey("monzo_importer.id"))
+    name: Mapped[str] = mapped_column()
+    priority: Mapped[int] = mapped_column()
+    # Add this to tx
+    new_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        name="metadata",
+        server_default=text("'{}'::jsonb")
+    )
+
+    # No FK as Ledger is a different domain
+    # This is the account the transaction is assigned to (the other side to the Monzo)
+    account_id: Mapped[UUID] = mapped_column()
+    # What payee & narration to set on the tx
+    payee: Mapped[str | None] = mapped_column()
+    narration: Mapped[str | None] = mapped_column()
+    # Pre-filter that can be combined with anything: date
+    created_at: Mapped[datetime | None] = mapped_column()
+    # Monzo category, e.g. for defining holiday -> Expenses:Holiday
+    category: Mapped[str | None] = mapped_column()
+    # From monzo counterparty.account_name
+    account_number: Mapped[str | None] = mapped_column()
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        server_default=text("'{}'::text[]"),
+        default=list
+    )
+    # Monzo pot id
+    pot_id: Mapped[str | None] = mapped_column()
+    # Defines the Merchant (group means all branches, e.g. all Sainburys have same group id)
+    merchant_group_id: Mapped[str | None] = mapped_column()
+    # counterparty.name
+    counterparty_name: Mapped[str | None] = mapped_column()
+    # match for a single transaction, useful for specific overrides
+    transaction_id: Mapped[UUID | None] = mapped_column()
+
+
 class GoCardlessImportIntegration(Base):
     __tablename__ = "go_cardless_importer"
 

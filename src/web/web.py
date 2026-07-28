@@ -3,26 +3,25 @@ import datetime
 import os
 import uuid
 from pathlib import Path
-from typing import Literal
-from uuid import UUID
 
 import pika
 import uvicorn
-from fastapi import FastAPI, Request, Depends, Query, HTTPException
+from fastapi import FastAPI, Request, Depends, HTTPException
 from minio import Minio
 from pika.adapters.blocking_connection import BlockingChannel
-from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from gocardless.gc_connection import GcConnection
+from importer.import_service import ImportService
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
 from model import MonzoStore, MonzoSyncMessage
 from monzo import MonzoClient
-from storage import write_monzo_store
+from web.model import GetTransactionsParams, GetPayeeParams, GetBalanceHistoryParams, GetBalanceParams, \
+    MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse
 
 
 # TODO setup routes properly
@@ -62,8 +61,7 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
     async def monzo_redirect(request: Request):
         params = dict(request.query_params)
         access, refresh = monzo_client.exchange_code(params["code"])
-        store = MonzoStore(access_token=access, refresh_token=refresh)
-        write_monzo_store(minio_client, store)
+        ImportService.update_monzo_tokens(params["state"], access, refresh)
         return templates.TemplateResponse("success.html", {"request": request})
 
     @app.post("/finance/monzo_partial_sync")
@@ -93,42 +91,6 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         gc_connection.complete_requisition(ref)
         return templates.TemplateResponse("success.html", {"request": request})
 
-    class GetTransactionsParams(BaseModel):
-        created_gt: datetime.datetime | None = None
-        created_lt: datetime.datetime | None = None
-        account_id: UUID | None = None
-        key: str | None = None
-        tags: list[str] = Field(Query(default=[]))
-        text_filter: str | None = None
-        payee: str | None = None
-        count: int = 100
-        cursor: str | None = None
-
-
-    class GetBalanceParams(BaseModel):
-        created_gt: datetime.datetime | None = None
-        created_lt: datetime.datetime | None = None
-        account_id: UUID | None = None
-        key: str | None = None
-        tags: list[str] = Field(Query(default=[]))
-        text_filter: str | None = None
-        payee: str | None = None
-        account_types: list[str] = Field(Query(default=[]))
-
-
-    class GetBalanceHistoryParams(BaseModel):
-        created_gt: datetime.datetime | None = None
-        created_lt: datetime.datetime | None = None
-        account_id: UUID | None = None
-        key: str | None = None
-        tags: list[str] = Field(Query(default=[]))
-        text_filter: str | None = None
-        payee: str | None = None
-        account_types: list[str] = Field(Query(default=[]))
-        period: Literal["day", "month", "week"]  = "month"
-
-    class GetPayeeParams(BaseModel):
-        filter: str | None = None
 
     @app.get("/finance/transactions")
     async def get_transactions(params: GetTransactionsParams = Depends()):
@@ -176,6 +138,22 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         filters = TransactionFilters(**params.model_dump())
         balances = ledger_service.get_balance_history(filters, params.account_types, params.period or "month")
         return balances.model_dump()
+
+    @app.get("/finance/import_configuration")
+    async def get_import_configurations():
+        monzo_configs = [MonzoImportConfigResponse(**i.model_dump()) for i in ImportService.get_monzo_configs()]
+        gc_configs = [GcImportConfigResponse(**i.model_dump()) for i in ImportService.get_gc_configs()]
+        return {
+            "monzo_configs": monzo_configs,
+            "gocardless_configs": gc_configs
+        }
+
+    @app.get("/finance/import_configuration/{import_id}/rule")
+    async def get_import_rules(import_id: uuid.UUID):
+        rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+        return {
+            "rules": rules
+        }
 
     return app
 
