@@ -74,3 +74,24 @@ class MonzoImportRuleResponse(BaseModel):
     counterparty_name: str | None = None
     transaction_id: UUID | None = None
     metadata: dict[str, str] = {}
+
+
+class MonzoImportRuleUpdateRequest(BaseModel):
+    rules: list["MonzoImportRuleUpdate"]
+
+class MonzoImportRuleUpdate(BaseModel):
+    id: UUID
+    import_integration_id: UUID
+    name: str
+    account_id: UUID
+    payee: str | None = None
+    narration: str | None = None
+    created_at: datetime.datetime | None = None
+    category: str | None = None
+    account_number: str | None = None
+    tags: list[str] = []
+    pot_id: str | None = None
+    merchant_group_id: str | None = None
+    counterparty_name: str | None = None
+    transaction_id: UUID | None = None
+    metadata: dict[str, str] = {}

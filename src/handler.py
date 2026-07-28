@@ -12,11 +12,11 @@ from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
 from importer.monzo_import import MonzoImporter
 from importer.santander_import import SantanderImporter
-from model import Transaction, MonzoStore, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions, Settings
+from model import Transaction, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions, Settings
 from monzo import MonzoClient
 from notification.notifier import Notifier
 from santander import from_gc
-from storage import SANTANDER_TX_FILE, write_monzo_store, MONZO_TX_FILE, Store
+from storage import SANTANDER_TX_FILE, MONZO_TX_FILE, Store
 from notification.discord import DiscordClient
 from pika.adapters.blocking_connection import BlockingConnection
 

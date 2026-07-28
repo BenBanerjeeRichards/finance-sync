@@ -17,10 +17,6 @@ def _account_id(accounts: list[AccountDto], full_name: str) -> uuid.UUID:
     return matches[0].id
 
 
-# One-off backfill: convert config.yml's accountRules + monzoCategoryMappings into MonzoImportRule rows.
-# accountRules keep their relative order as priority (lower = evaluated first, first match wins).
-# monzoCategoryMappings become lowest-priority rules matching only on category, so accountRules always
-# take precedence - matching the "accountRules below always take priority" comment in config.yml.
 def backfill_monzo_import_rules(config: Config, client_id: str) -> None:
     ledger_service = LedgerService(config)
     ledger_service.sync_ledger()

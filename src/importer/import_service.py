@@ -2,8 +2,8 @@ import datetime
 import uuid
 
 from pydantic import BaseModel
-from sqlalchemy import update, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import update, select, delete, type_coerce
+from sqlalchemy.dialects.postgresql import insert, JSONB
 
 from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule
 from main import Session
@@ -175,3 +175,55 @@ class ImportService:
                 transaction_id=r.transaction_id,
                 metadata=r.new_metadata,
             ) for r in results]
+
+    @staticmethod
+    def upsert_monzo_import_rules(import_integration_id: uuid.UUID, rules: list[MonzoImportRuleDto]):
+        # priority is determined by list order, first item is highest priority
+        # this creates and updates rules, but never deletes - use delete_monzo_import_rule for that
+        with Session.begin() as session:
+            for priority, rule in enumerate(rules):
+                stmt = insert(MonzoImportRule).values(
+                    id=rule.id,
+                    import_integration_id=import_integration_id,
+                    name=rule.name,
+                    priority=priority,
+                    account_id=rule.account_id,
+                    payee=rule.payee,
+                    narration=rule.narration,
+                    created_at=rule.created_at,
+                    category=rule.category,
+                    account_number=rule.account_number,
+                    tags=rule.tags,
+                    pot_id=rule.pot_id,
+                    merchant_group_id=rule.merchant_group_id,
+                    counterparty_name=rule.counterparty_name,
+                    transaction_id=rule.transaction_id,
+                    new_metadata=type_coerce(rule.metadata, JSONB),
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_=dict(
+                        import_integration_id=import_integration_id,
+                        name=rule.name,
+                        priority=priority,
+                        account_id=rule.account_id,
+                        payee=rule.payee,
+                        narration=rule.narration,
+                        created_at=rule.created_at,
+                        category=rule.category,
+                        account_number=rule.account_number,
+                        tags=rule.tags,
+                        pot_id=rule.pot_id,
+                        merchant_group_id=rule.merchant_group_id,
+                        counterparty_name=rule.counterparty_name,
+                        transaction_id=rule.transaction_id,
+                        metadata=type_coerce(rule.metadata, JSONB),
+                    )
+                )
+                session.execute(stmt)
+
+    @staticmethod
+    def delete_monzo_import_rule(rule_id: uuid.UUID):
+        with Session.begin() as session:
+            stmt = delete(MonzoImportRule).where(MonzoImportRule.id == rule_id)
+            session.execute(stmt)

@@ -15,13 +15,13 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from gocardless.gc_connection import GcConnection
-from importer.import_service import ImportService
+from importer.import_service import ImportService, MonzoImportRuleDto
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
 from model import MonzoStore, MonzoSyncMessage
 from monzo import MonzoClient
 from web.model import GetTransactionsParams, GetPayeeParams, GetBalanceHistoryParams, GetBalanceParams, \
-    MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse
+    MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse, MonzoImportRuleUpdateRequest
 
 
 # TODO setup routes properly
@@ -154,6 +154,21 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         return {
             "rules": rules
         }
+
+    @app.put("/finance/import_configuration/{import_id}/rule")
+    async def update_import_rules(import_id: uuid.UUID, update: MonzoImportRuleUpdateRequest):
+        # creates and updates rules, never deletes - use the delete endpoint for that
+        # priority is determined by list order, first item is highest priority
+        rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
+        ImportService.upsert_monzo_import_rules(import_id, rules)
+        rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+        return {
+            "rules": rules
+        }
+
+    @app.delete("/finance/import_configuration/{import_id}/rule/{rule_id}")
+    async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
+        ImportService.delete_monzo_import_rule(rule_id)
 
     return app
 
