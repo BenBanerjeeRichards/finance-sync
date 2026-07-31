@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy import update, select, delete, type_coerce
 from sqlalchemy.dialects.postgresql import insert, JSONB
 
-from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule, GoCardlessImportRule
+from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule, GoCardlessImportRule, \
+    Account
 from main import Session
 
 
@@ -18,7 +19,9 @@ class MonzoImportIntegrationDto(BaseModel):
     client_id: str
     client_secret: str
     active_at: datetime.datetime | None = None
-
+    cash_account_id: uuid.UUID | None = None
+    default_income_account_id: uuid.UUID | None = None
+    default_expense_account_id: uuid.UUID | None = None
 
 class GcImportIntegrationDto(BaseModel):
     id: uuid.UUID
@@ -27,6 +30,9 @@ class GcImportIntegrationDto(BaseModel):
     requisition_expires_at: datetime.datetime | None = None
     # GC is now closed to new bank accounts so we don't need to support any more than santander
     kind: str = "santander"
+    cash_account_id: uuid.UUID | None = None
+    default_income_account_id: uuid.UUID | None = None
+    default_expense_account_id: uuid.UUID | None = None
 
 
 class MonzoImportRuleDto(BaseModel):
@@ -66,8 +72,23 @@ class GcImportRuleDto(BaseModel):
     amount_equals: Decimal | None
 
 
+class UnknownAccountError(ValueError):
+    pass
+
+
 # don't bother with repo for now as this is so simple
 class ImportService:
+
+    @staticmethod
+    def _validate_accounts_exist(session, account_ids: list[uuid.UUID | None]):
+        # Accounts live in the ledger domain and there's no FK to enforce this, so check manually
+        ids = {a for a in account_ids if a is not None}
+        if not ids:
+            return
+        found = set(session.execute(select(Account.id).where(Account.id.in_(ids))).scalars())
+        missing = ids - found
+        if missing:
+            raise UnknownAccountError(f"Unknown account id(s): {', '.join(str(m) for m in missing)}")
 
     @staticmethod
     def create_monzo_import_if_not_exists(client_id: str, client_secret: str, monzo_account_id: str):
@@ -112,6 +133,9 @@ class ImportService:
                 access_token=res.access_token,
                 refresh_token=res.refresh_token,
                 active_at=res.active_at.isoformat() if res.active_at else None,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
             )
 
     @staticmethod
@@ -127,6 +151,9 @@ class ImportService:
                 access_token=res.access_token,
                 refresh_token=res.refresh_token,
                 active_at=res.active_at.isoformat() if res.active_at else None,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
             ) for res in results]
 
 
@@ -141,6 +168,9 @@ class ImportService:
                 secret_id=res.secret_id,
                 secret_key=res.secret_key,
                 requisition_expires_at=res.requisition_expires_at,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
             ) for res in results]
 
 
@@ -160,6 +190,9 @@ class ImportService:
                 secret_id=res.secret_id,
                 secret_key=res.secret_key,
                 requisition_expires_at=res.requisition_expires_at,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
             )
 
     @staticmethod
@@ -168,6 +201,99 @@ class ImportService:
             stmt = update(GoCardlessImportIntegration).where(GoCardlessImportIntegration.secret_id == secret_id).values(
                 requisition_expires_at=dt)
             session.execute(stmt)
+
+    @staticmethod
+    def get_monzo_config_by_id(import_id: uuid.UUID) -> MonzoImportIntegrationDto:
+        with Session.begin() as session:
+            q = select(MonzoImportIntegration).where(MonzoImportIntegration.id == import_id)
+            res = session.execute(q).scalar_one_or_none()
+
+            if not res:
+                raise ValueError(f"No monzo config found for id {import_id}")
+
+            return MonzoImportIntegrationDto(
+                id=res.id,
+                client_id=res.client_id,
+                client_secret=res.client_secret,
+                access_token=res.access_token,
+                refresh_token=res.refresh_token,
+                active_at=res.active_at,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
+            )
+
+    @staticmethod
+    def get_gc_config_by_id(import_id: uuid.UUID) -> GcImportIntegrationDto:
+        with Session.begin() as session:
+            q = select(GoCardlessImportIntegration).where(GoCardlessImportIntegration.id == import_id)
+            res = session.execute(q).scalar_one_or_none()
+
+            if not res:
+                raise ValueError(f"No gc config found for id {import_id}")
+
+            return GcImportIntegrationDto(
+                id=res.id,
+                secret_id=res.secret_id,
+                secret_key=res.secret_key,
+                requisition_expires_at=res.requisition_expires_at,
+                cash_account_id=res.cash_account_id,
+                default_income_account_id=res.default_income_account_id,
+                default_expense_account_id=res.default_expense_account_id,
+            )
+
+    @staticmethod
+    def update_monzo_config(import_id: uuid.UUID, cash_account_id: uuid.UUID | None,
+                            default_income_account_id: uuid.UUID | None,
+                            default_expense_account_id: uuid.UUID | None):
+        with Session.begin() as session:
+            ImportService._validate_accounts_exist(
+                session, [cash_account_id, default_income_account_id, default_expense_account_id])
+            stmt = update(MonzoImportIntegration).where(MonzoImportIntegration.id == import_id).values(
+                cash_account_id=cash_account_id,
+                default_income_account_id=default_income_account_id,
+                default_expense_account_id=default_expense_account_id,
+            )
+            session.execute(stmt)
+
+    @staticmethod
+    def update_gc_config(import_id: uuid.UUID, cash_account_id: uuid.UUID | None,
+                         default_income_account_id: uuid.UUID | None,
+                         default_expense_account_id: uuid.UUID | None):
+        with Session.begin() as session:
+            ImportService._validate_accounts_exist(
+                session, [cash_account_id, default_income_account_id, default_expense_account_id])
+            stmt = update(GoCardlessImportIntegration).where(GoCardlessImportIntegration.id == import_id).values(
+                cash_account_id=cash_account_id,
+                default_income_account_id=default_income_account_id,
+                default_expense_account_id=default_expense_account_id,
+            )
+            session.execute(stmt)
+
+    @staticmethod
+    def get_import_config(import_id: uuid.UUID) -> tuple[Literal["monzo", "gc"], MonzoImportIntegrationDto | GcImportIntegrationDto]:
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            return kind, ImportService.get_monzo_config_by_id(import_id)
+        if kind == "gc":
+            return kind, ImportService.get_gc_config_by_id(import_id)
+        raise ValueError(f"No import configuration found for id {import_id}")
+
+    @staticmethod
+    def update_import_config(import_id: uuid.UUID, cash_account_id: uuid.UUID | None,
+                             default_income_account_id: uuid.UUID | None,
+                             default_expense_account_id: uuid.UUID | None
+                             ) -> tuple[Literal["monzo", "gc"], MonzoImportIntegrationDto | GcImportIntegrationDto]:
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            ImportService.update_monzo_config(import_id, cash_account_id, default_income_account_id,
+                                              default_expense_account_id)
+            return kind, ImportService.get_monzo_config_by_id(import_id)
+        if kind == "gc":
+            ImportService.update_gc_config(import_id, cash_account_id, default_income_account_id,
+                                           default_expense_account_id)
+            return kind, ImportService.get_gc_config_by_id(import_id)
+        raise ValueError(f"No import configuration found for id {import_id}")
 
     @staticmethod
     def get_monzo_import_rules(import_integration_id: uuid.UUID) -> list[MonzoImportRuleDto]:
@@ -225,6 +351,7 @@ class ImportService:
     @staticmethod
     def upsert_gc_import_rules(import_integration_id: uuid.UUID, rules: list[GcImportRuleDto]):
         with Session.begin() as session:
+            ImportService._validate_accounts_exist(session, [rule.account_id for rule in rules])
             for priority, rule in enumerate(rules):
                 stmt = insert(GoCardlessImportRule).values(
                     id=rule.id,
@@ -269,6 +396,7 @@ class ImportService:
         # priority is determined by list order, first item is highest priority
         # this creates and updates rules, but never deletes - use delete_monzo_import_rule for that
         with Session.begin() as session:
+            ImportService._validate_accounts_exist(session, [rule.account_id for rule in rules])
             for priority, rule in enumerate(rules):
                 stmt = insert(MonzoImportRule).values(
                     id=rule.id,
@@ -321,6 +449,23 @@ class ImportService:
         with Session.begin() as session:
             stmt = delete(GoCardlessImportRule).where(GoCardlessImportRule.id == rule_id)
             session.execute(stmt)
+
+    @staticmethod
+    def get_import_rules(import_id: uuid.UUID) -> tuple[Literal["monzo", "gc"], list[MonzoImportRuleDto] | list[GcImportRuleDto]]:
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            return kind, ImportService.get_monzo_import_rules(import_id)
+        if kind == "gc":
+            return kind, ImportService.get_gc_import_rules(import_id)
+        raise ValueError(f"No import rules found for id {import_id}")
+
+    @staticmethod
+    def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            ImportService.delete_monzo_import_rule(rule_id)
+        elif kind == "gc":
+            ImportService.delete_gc_import_rule(rule_id)
 
     @staticmethod
     def get_import_rule_type(import_id: uuid.UUID) -> Literal["gc", "monzo"] | None:

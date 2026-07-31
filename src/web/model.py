@@ -50,12 +50,24 @@ class MonzoImportConfigResponse(BaseModel):
     id: UUID
     client_id: str
     active_at: datetime.datetime | None = None
+    cash_account_id: UUID | None = None
+    default_income_account_id: UUID | None = None
+    default_expense_account_id: UUID | None = None
 
 class GcImportConfigResponse(BaseModel):
     id: UUID
     secret_id: str
     requisition_expires_at: datetime.datetime | None = None
     kind: str
+    cash_account_id: UUID | None = None
+    default_income_account_id: UUID | None = None
+    default_expense_account_id: UUID | None = None
+
+
+class ImportConfigUpdateRequest(BaseModel):
+    cash_account_id: UUID | None = None
+    default_income_account_id: UUID | None = None
+    default_expense_account_id: UUID | None = None
 
 
 class MonzoImportRuleResponse(BaseModel):

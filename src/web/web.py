@@ -15,14 +15,14 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from gocardless.gc_connection import GcConnection
-from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto
+from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
 from model import MonzoSyncMessage
 from monzo import MonzoClient
 from web.model import GetTransactionsParams, GetPayeeParams, GetBalanceHistoryParams, GetBalanceParams, \
     MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse, MonzoImportRuleUpdateRequest, \
-    GcImportRuleResponse, GcImportRuleUpdateRequest
+    GcImportRuleResponse, GcImportRuleUpdateRequest, ImportConfigUpdateRequest
 import logging
 
 # TODO setup routes properly
@@ -149,21 +149,30 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
             "gocardless_configs": gc_configs
         }
 
+    @app.put("/finance/import_configuration/{import_id}")
+    async def update_import_configuration(import_id: uuid.UUID, update: ImportConfigUpdateRequest):
+        try:
+            kind, config = ImportService.update_import_config(
+                import_id, update.cash_account_id, update.default_income_account_id, update.default_expense_account_id)
+        except UnknownAccountError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Import configuration not found")
+
+        response_cls = MonzoImportConfigResponse if kind == "monzo" else GcImportConfigResponse
+        return response_cls(**config.model_dump())
+
     @app.get("/finance/import_configuration/{import_id}/rule")
     async def get_import_rules(import_id: uuid.UUID):
-        kind = ImportService.get_import_rule_type(import_id)
-        if kind == "monzo":
-            rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
-            return {
-                "rules": rules
-            }
-        if kind == "gc":
-            rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
-            return {
-                "rules": rules
-            }
+        try:
+            kind, rules = ImportService.get_import_rules(import_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Rule not found")
 
-        raise HTTPException(status_code=404, detail="Rule not found")
+        response_cls = MonzoImportRuleResponse if kind == "monzo" else GcImportRuleResponse
+        return {
+            "rules": [response_cls(**r.model_dump()) for r in rules]
+        }
 
     @app.put("/finance/import_configuration/{import_id}/rule")
     async def update_import_rules(import_id: uuid.UUID, update: dict):
@@ -171,18 +180,21 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         # priority is determined by list order, first item is highest priority
         kind = ImportService.get_import_rule_type(import_id)
 
-        if kind == "monzo":
-            logging.info("updating monzo rules %s", import_id)
-            update = MonzoImportRuleUpdateRequest(**update)
-            rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
-            ImportService.upsert_monzo_import_rules(import_id, rules)
-            rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
-        else:
-            logging.info("updating gc monzo rules %s", import_id)
-            update = GcImportRuleUpdateRequest(**update)
-            rules = [GcImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
-            ImportService.upsert_gc_import_rules(import_id, rules)
-            rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
+        try:
+            if kind == "monzo":
+                logging.info("updating monzo rules %s", import_id)
+                update = MonzoImportRuleUpdateRequest(**update)
+                rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
+                ImportService.upsert_monzo_import_rules(import_id, rules)
+                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+            else:
+                logging.info("updating gc monzo rules %s", import_id)
+                update = GcImportRuleUpdateRequest(**update)
+                rules = [GcImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
+                ImportService.upsert_gc_import_rules(import_id, rules)
+                rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
+        except UnknownAccountError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         return {
             "rules": rules
@@ -190,11 +202,7 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
 
     @app.delete("/finance/import_configuration/{import_id}/rule/{rule_id}")
     async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
-        kind = ImportService.get_import_rule_type(import_id)
-        if kind == "monzo":
-            ImportService.delete_monzo_import_rule(rule_id)
-        elif kind == "gc":
-            ImportService.delete_gc_import_rule(rule_id)
+        ImportService.delete_import_rule(import_id, rule_id)
 
 
     return app

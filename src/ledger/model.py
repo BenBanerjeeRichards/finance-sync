@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum as PythonEnum
@@ -144,12 +145,17 @@ class MonzoImportIntegration(Base):
     # use monzo client id as unique constraint as it does not make sense to have duplicate importers
     client_id: Mapped[str] = mapped_column(unique=True)
     client_secret: Mapped[str] = mapped_column()
-    account_id: Mapped[str]= mapped_column()
+    account_id: Mapped[str]= mapped_column()    # monzo account id
     access_token: Mapped[str | None] = mapped_column()
     refresh_token: Mapped[str | None] = mapped_column()
     # Datetime representing latest refresh success, if failure this becomes None
     active_at: Mapped[datetime | None] = mapped_column()
-
+    # The account id of this account
+    cash_account_id: Mapped[UUID | None] = mapped_column()
+    # Default account id for income
+    default_income_account_id: Mapped[UUID | None] = mapped_column()
+    # Default account id for expenses
+    default_expense_account_id: Mapped[UUID | None] = mapped_column()
 
 class MonzoImportRule(Base):
     __tablename__ = "monzo_import_rule"
@@ -199,6 +205,9 @@ class GoCardlessImportIntegration(Base):
     secret_id: Mapped[str] = mapped_column(unique=True)
     secret_key: Mapped[str] = mapped_column()
     requisition_expires_at: Mapped[datetime | None] = mapped_column()
+    cash_account_id: Mapped[uuid.UUID | None] = mapped_column()
+    default_income_account_id: Mapped[uuid.UUID | None] = mapped_column()
+    default_expense_account_id: Mapped[uuid.UUID | None] = mapped_column()
 
 
 class GoCardlessImportRule(Base):
