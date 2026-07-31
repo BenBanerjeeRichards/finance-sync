@@ -1,5 +1,7 @@
 from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
+from ledger.ledger_service import LedgerService
+from main import Session
 from model import Config, AccrualConfig
 import logging
 from decimal import Decimal
@@ -24,10 +26,11 @@ class BeancountAccruals:
         self.config = config
 
     def run_accruals(self):
-        for rule in self.config.accruals:
-            self.process_accrual(rule)
+        with Session.begin() as session:
+            for rule in self.config.accruals:
+                self.process_accrual(session, rule)
 
-    def process_accrual(self, rule: AccrualConfig):
+    def process_accrual(self, session: "Session", rule: AccrualConfig):
         logging.info("Calculating accruals for rule %s", rule.metadata_key)
         settlements = self.beancount.find_all_by_metadata_by_date_desc(rule.metadata_key, VALUE_SETTLEMENT)
         provisional_liabilities = self.beancount.find_all_by_metadata_by_date_desc(rule.metadata_key,
@@ -51,8 +54,10 @@ class BeancountAccruals:
 
             for i, liability_date in enumerate(liability_months):
                 liability_key = f"{settlement_key}-{liability_date.isoformat()}"
+                credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
+                expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
                 tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
-                                             credit_account=rule.liability_account, debit_account=rule.expense_account,
+                                             credit_account_id=credit_account_id, debit_account_id=expense_account_id,
                                              payee=settlement.payee,
                                              description=f"{rule.name} - incurred liability",
                                              flagged=False,
@@ -93,9 +98,12 @@ class BeancountAccruals:
         logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name,
                      provisional_liability_months, estimated_liability)
         for i, liability_date in enumerate(provisional_liability_months):
+            credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
+            expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
+
             liability_key = f"provisional-{most_recent_settlement.meta["external_id"]}-{liability_date.isoformat()}"
             tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
-                                         credit_account=rule.liability_account, debit_account=rule.expense_account,
+                                         credit_account_id=credit_account_id, debit_account_id=expense_account_id,
                                          payee=most_recent_settlement.payee,
                                          description=f"{rule.name} - provisional liability",
                                          flagged=False,

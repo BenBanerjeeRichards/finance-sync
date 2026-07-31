@@ -10,6 +10,7 @@ from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import SimpleLedgerTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
+from importer.import_service import ImportService
 from importer.monzo_import import MonzoImporter
 from importer.santander_import import SantanderImporter
 from model import Transaction, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions, Settings
@@ -118,10 +119,19 @@ class Handler:
 
 def sync_santander_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
     santander_transactions = store.load(SANTANDER_TX_FILE, SantanderTransactions).transactions
-    translater = SantanderTranslater(config)
+    santander_configs = [c for c in ImportService.get_gc_configs() if c.kind == "santander"]
+    if len(santander_configs) != 1:
+        logging.error("Expected exactly one santader config, got %s", len(santander_configs))
+        return
+    santander_config = santander_configs[0]
+    if None in [santander_config.default_expense_account_id, santander_config.default_income_account_id, santander_config.cash_account_id]:
+        logging.error("Santander config not yet configured, skipping...")
+        return
+
+    translater = SantanderTranslater(santander_config)
     mapped_transactions = [translater.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
     ledger_transactions = [tx for tx in mapped_transactions if tx]
-    beancount_sync.sync(config.santanderBeanFileName, ledger_transactions)
+    beancount_sync.sync()
 
     from ledger.ledger_service import LedgerService
 
@@ -130,8 +140,18 @@ def sync_santander_ledger(config: Config, store: Store, beancount_sync: Beancoun
     ledger.write_beancount_transactions("santander.bean", ledger_transactions)
 
 def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
+    from importer.import_service import ImportService
+    monzo_configs = ImportService.get_monzo_configs()
+    if len(monzo_configs) != 1:
+        logging.error("Expected exactly one monzo config, got %s", len(monzo_configs))
+        return
+    monzo_config = monzo_configs[0]
+    if None in [monzo_config.default_expense_account_id, monzo_config.default_income_account_id, monzo_config.cash_account_id]:
+        logging.error("Monzo config not yet configured, skipping...")
+        return
+
     monzo_transactions = store.load_list(MONZO_TX_FILE, Transaction)
-    translater = MonzoTranslater(config)
+    translater = MonzoTranslater(monzo_config)
     # We limit start from FY25 as that is only as far back as I have Santander and can be bothered to do the manual postings for
     ledger_transactions = [translater.translate_to_ledger(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     from ledger.ledger_service import LedgerService
@@ -140,4 +160,4 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
     logging.info("writing monzo to db (%s)", len(ledger_transactions))
     ledger.write_beancount_transactions("monzo.bean", ledger_transactions)
 
-    beancount_sync.sync(config.beanFileName, ledger_transactions)
+    beancount_sync.sync()

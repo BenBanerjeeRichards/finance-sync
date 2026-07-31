@@ -116,26 +116,26 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
         }
 
     @app.get("/finance/account")
-    async def get_payee():
+    async def get_accounts():
         return {
             "accounts": ledger_service.get_accounts()
         }
 
     @app.get("/finance/tag")
-    async def get_payee():
+    async def get_tags():
         return {
             "tags": ledger_service.get_tags()
         }
 
     @app.get("/finance/balance")
-    async def get_payee(params: GetBalanceParams = Depends()):
+    async def get_balance(params: GetBalanceParams = Depends()):
         filters = TransactionFilters(**params.model_dump())
         balances = ledger_service.get_balance(filters, params.account_types)
         return balances.model_dump()
 
 
     @app.get("/finance/balance_history")
-    async def get_payee(params: GetBalanceHistoryParams = Depends()):
+    async def get_balance_history(params: GetBalanceHistoryParams = Depends()):
         filters = TransactionFilters(**params.model_dump())
         balances = ledger_service.get_balance_history(filters, params.account_types, params.period or "month")
         return balances.model_dump()

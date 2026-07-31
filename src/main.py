@@ -17,7 +17,6 @@ import pika
 import logging
 
 from monzo import MonzoClient
-from handler import Handler
 from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 import multiprocessing
@@ -65,7 +64,7 @@ def load_settings() -> Settings:
     )
 
 
-def listen_for_updates(pika_connection: BlockingConnection, handler: Handler):
+def listen_for_updates(pika_connection: BlockingConnection, handler: "Handler"):
     # Wire everything up...not massivly sustainable but ok for something small
     channel = pika_connection.channel()
 
@@ -140,6 +139,8 @@ def main():
     ledger_service = LedgerService(config)
 
     def start_pika():
+        from handler import Handler
+
         message_handler = Handler(config, settings, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
                                   notifier, beancount)

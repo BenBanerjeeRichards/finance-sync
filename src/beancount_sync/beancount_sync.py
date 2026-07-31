@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING
-
+import uuid
 from pydantic import BaseModel
 import logging
 
@@ -19,8 +19,8 @@ class SimpleLedgerTransaction(BaseModel):
     tx_date: date
     tx_datetime: datetime | None = None
     amount: Decimal
-    credit_account: str  # where money comes from
-    debit_account: str  # where money goes to
+    credit_account_id: uuid.UUID  # where money comes from
+    debit_account_id: uuid.UUID  # where money goes to
     payee: str  # summary of who is being paid
     description: str  # aka narration - more detail about transaction
     tags: list[str] = []  # tags added to further categorise e.g. #travel
@@ -50,36 +50,20 @@ class BeancountSync:
         self.accrual = BeancountAccruals(self.beancount, config)
         self.energy_sync = EnergySync(self.config, self.beancount)
 
-    def sync(self, ledger_name: str, transactions: list[SimpleLedgerTransaction]):
+    def sync(self):
         """"
         Sync the given transactions with the ledger
         For any updates, publish these to the appropiate topics
         """
-        self._update_ledger(ledger_name, transactions)
+        self._update_ledger()
 
-    def _update_ledger(self, ledger_name: str, transactions: list[SimpleLedgerTransaction]) -> tuple[
-        list[SimpleLedgerTransaction], list[SimpleLedgerTransaction]]:
-        updated = []
-        created = []
+    def _update_ledger(self) -> None:
 
         # TODO move elsewhere
         from ledger.ledger_service import LedgerService
         LedgerService(self.config).sync_ledger()
 
-        with self.beancount.transaction() as beancount_tx:
-            for tx in transactions:
-                try:
-                    status = beancount_tx.create_or_update_transaction(ledger_name, tx)
-                    if status == 'new':
-                        created.append(tx)
-                    elif status == 'updated':
-                        updated.append(tx)
-                except Exception as e:
-                    raise RuntimeError(f"Failed to add or update transaction {tx.external_id}") from e
-            logging.info("Updated ledger: new=%s updated=%s", len(created), len(updated))
-
         # Compute any new accrual transactions & energy
         self.accrual.run_accruals()
         self.energy_sync.run_energy_sync()
-        return created, updated
 

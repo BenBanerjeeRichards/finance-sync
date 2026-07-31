@@ -52,6 +52,14 @@ class LedgerService:
         with Session.begin() as session:
             return LedgerRepo.get_accounts(session)
 
+
+    @staticmethod
+    def get_account_by_full_name(session: "Session", name: str) -> AccountDto:
+        res = LedgerRepo.get_account_by_full_name(session, name)
+        if not res:
+            raise ValueError(f"Account {name} not found")
+        return res
+
     @staticmethod
     def get_tags() -> list[str]:
         with Session.begin() as session:
@@ -99,7 +107,6 @@ class LedgerService:
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
         with Session.begin() as session:
-            all_accounts = LedgerRepo.get_accounts(session) # very small list
             ledger_name_to_id = {l.name: l.id for l in LedgerRepo.get_ledgers(session)}
             ledger_name = ledger_bean_name.split(".")[0]
             transactions = []
@@ -130,17 +137,11 @@ class LedgerService:
                     local_amount = tx.amount
                     local_currency = "GBP"
 
-                credit_account = LedgerService._from_beancount_account_name(tx.credit_account)
-                debit_account = LedgerService._from_beancount_account_name(tx.debit_account)
                 tx_id = transaction_key_to_id[tx.external_id]
-                db_credit_account = \
-                [a for a in all_accounts if a.name == credit_account.name and a.type == credit_account.type][0]
-                db_debit_account = \
-                [a for a in all_accounts if a.name == debit_account.name and a.type == debit_account.type][0]
-                credit_entry = Entry(id=uuid.uuid4(), account_id=db_credit_account.id,
+                credit_entry = Entry(id=uuid.uuid4(), account_id=tx.credit_account_id,
                                      amount=abs(tx.amount) * -1, local_amount=abs(local_amount) * -1,
                                      local_currency=local_currency, transaction_id=tx_id)
-                debit_entry = Entry(id=uuid.uuid4(), account_id=db_debit_account.id,
+                debit_entry = Entry(id=uuid.uuid4(), account_id=tx.debit_account_id,
                                     amount=abs(tx.amount), local_amount=abs(local_amount),
                                     local_currency=local_currency, transaction_id=tx_id)
                 entries.append(credit_entry)

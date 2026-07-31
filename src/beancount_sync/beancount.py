@@ -56,18 +56,18 @@ class Beancount:
         if file_name not in self.beancount_files:
             logging.info("attempt to write to file %s not in editable files (%s)", file_name, self.editable_bean_files)
             raise Exception(f"File {file_name} does not exist in editable files")
-        update_type = self.beancount_files[file_name].add_or_update(transaction)
-        if update_type == 'new':
-            self._publish_event(transaction, EXCHANGE_TX_CREATED)
-        if update_type == 'updated':
-            self._publish_event(transaction, EXCHANGE_TX_UPDATED)
+        # update_type = self.beancount_files[file_name].add_or_update(transaction)
+        # if update_type == 'new':
+        #     self._publish_event(transaction, EXCHANGE_TX_CREATED)
+        # if update_type == 'updated':
+        #     self._publish_event(transaction, EXCHANGE_TX_UPDATED)
 
         from ledger.ledger_service import LedgerService
         # for now just skip monzo + santander as we do all those at the same time during sync
         if file_name not in [self.config.beanFileName, self.config.santanderBeanFileName]:
             LedgerService(self.config).write_beancount_transactions(file_name, [transaction])
 
-        return update_type
+        return 'none'
 
     def delete_transaction(self, file_name: str, external_id: str):
         self.beancount_files[file_name].delete(external_id)

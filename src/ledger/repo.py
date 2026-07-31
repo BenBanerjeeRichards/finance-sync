@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert  # need postgres version for o
 from sqlalchemy.orm import Session, defer
 import logging
 
-from ledger.model import Account, Ledger, Transaction, Entry
+from ledger.model import Account, Ledger, Transaction, Entry, AccountType
 from ledger.dto import AccountDto, LedgerDto, BalancesDto, BalanceEntryDto, PeriodicBalancesDto, PeriodicBalanceEntryDto
 import base64
 
@@ -44,6 +44,24 @@ class LedgerRepo:
     @staticmethod
     def get_accounts(session) -> list[AccountDto]:
         return [AccountDto.model_validate(a) for a in session.scalars(select(Account))]
+
+
+    @staticmethod
+    def get_account_by_full_name(session, full_name: str) -> AccountDto | None:
+        # TODO we can remove this once fully migrated
+        parts = full_name.split(":")
+        assert len(parts) == 2
+        type_str = parts[0].lower()
+        type_str = type_str.replace("liabilities", "liability")
+        type_str = type_str.replace("assets", "asset")
+        type_str = type_str.replace("expenses", "expense")
+        ac_type = AccountType(type_str)
+        name = parts[1]
+        q = select(Account).where(Account.name == name).where(Account.type == ac_type)
+        res = session.execute(q).scalar_one_or_none()
+        if not res:
+            return None
+        return AccountDto.model_validate(res)
 
     @staticmethod
     def get_ledgers(session) -> list[LedgerDto]:

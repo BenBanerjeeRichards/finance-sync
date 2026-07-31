@@ -1,4 +1,3 @@
-import datetime
 import logging
 
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
@@ -8,20 +7,26 @@ from model import Transaction as MonzoTransaction
 
 
 class MonzoTranslater:
+    from importer.import_service import  MonzoImportRuleDto, MonzoImportIntegrationDto
+
     """
     Translates monzo translations to Beancount ledger postings
     Uses the rules in the provided config to determine the account
     Most just get the accounts from the monzo categories: e.g. Groceries -> Expenses::Groceries
     """
 
-    def __init__(self, config: Config) -> None:
-        self.config = config
+    def __init__(self, import_config: MonzoImportIntegrationDto) -> None:
+        from importer.import_service import ImportService
+
+        self.import_config = import_config
+        self.import_rules = ImportService.get_monzo_import_rules(import_config.id)
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
-        cash_account = self.config.monzoCashAccount
-        other_account, rule = self._get_transaction_accounts(tx)
+        cash_account = self.import_config.cash_account_id
+        rule = self._get_transaction_rule(tx)
+
         flagged = False
-        if not other_account:
+        if not rule:
             logging.warning(
                 "Failed to find account for transaction %s(created=%s)",
                 tx.id,
@@ -29,10 +34,12 @@ class MonzoTranslater:
             )
             flagged = True
             other_account = (
-                self.config.defaultIncomeAccount
+                self.import_config.default_income_account_id
                 if tx.amount >= 0
-                else self.config.defaultExpenseAccount
+                else self.import_config.default_expense_account_id
             )
+        else:
+            other_account = rule.account_id
 
         if tx.amount >= 0:
             # This is money into the monzo cash, hence we are debiting the cash account
@@ -61,8 +68,8 @@ class MonzoTranslater:
             tx_date=tx_date,
             tx_datetime=tx_datetime,
             amount=amount.number,
-            credit_account=credit_account,
-            debit_account=debit_account,
+            credit_account_id=credit_account,
+            debit_account_id=debit_account,
             payee=rule.payee if rule and rule.payee else payee,
             description=description,
             flagged=flagged,
@@ -74,42 +81,40 @@ class MonzoTranslater:
             local_currency=tx.local_currency
         )
 
-    def _get_transaction_accounts(
-        self, monzo_tx: MonzoTransaction
-    ) -> tuple[str | None, MonzoAccountRule | None]:
-        for rule in self.config.accountRules:
-            if MonzoTranslater._match_account_rule(rule, monzo_tx):
-                return rule.account, rule
-
-        account_maybe = self.config.monzoCategoryMappings.get(monzo_tx.category)
-
-        if not account_maybe:
-            return None, None
-        return account_maybe, None
+    def _get_transaction_rule(
+            self, monzo_tx: MonzoTransaction
+    ) -> MonzoImportRuleDto | None:
+        for rule in self.import_rules:
+            if self._match_account_rule(rule, monzo_tx):
+                return rule
+        return None
 
     @staticmethod
-    def _match_account_rule(rule: MonzoAccountRule, tx: MonzoTransaction) -> bool:
+    def _match_account_rule(rule: MonzoImportRuleDto, tx: MonzoTransaction) -> bool:
         """
         Core logic for matching rules against transactions
         If a rule item is provided and fails to match, the entire rule fails
         """
-        if rule.createdGt:
-            if tx.created <= rule.createdGt.isoformat():
+        if rule.created_at:
+            if tx.created <= rule.created_at.isoformat():
                 return False
         tags = rule.tags
         if tags:
             return len(set(tags) - set(tx.tags)) < len(set(tags))
-        account_number = rule.accountNumber
+        account_number = rule.account_number
         if account_number and tx.counterparty is not None:
             return tx.counterparty.account_number == account_number
-        pot_id = rule.potId
+        pot_id = rule.pot_id
         if pot_id:
             return tx.pot_id == pot_id
-        group_id = rule.merchantGroupId
+        group_id = rule.merchant_group_id
         if group_id:
             if tx.merchant and tx.merchant.group_id == group_id:
                 return True
-        if rule.counterpartyName and tx.counterparty and tx.counterparty.name:
-            if rule.counterpartyName.lower() in tx.counterparty.name.lower():
+        if rule.counterparty_name and tx.counterparty and tx.counterparty.name:
+            if rule.counterparty_name.lower() in tx.counterparty.name.lower():
                 return True
+
+        if rule.category and rule.category.lower() == tx.category.lower():
+            return True
         return False
