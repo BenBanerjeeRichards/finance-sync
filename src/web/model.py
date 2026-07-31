@@ -1,4 +1,5 @@
 import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
@@ -76,8 +77,31 @@ class MonzoImportRuleResponse(BaseModel):
     metadata: dict[str, str] = {}
 
 
+class GcImportRuleResponse(BaseModel):
+    id: UUID
+    import_integration_id: UUID
+    name: str # name of this rule
+    priority: int
+    payee: str | None
+    new_metadata: dict[str, str] = {}
+    narration: str | None
+    account_id: UUID
+
+    credit_only: bool = False       # only apply when this account on credit side
+    debit_only: bool = False # only apply when this account is on debit side (money moving in)
+    ignore: bool = False  # don't create a transaction (would duplicate a different importer)
+    transaction_type: str | None # GIRA, CARD etc
+    account_name_matches: str | None # account name match, if this string is a substring (case insensitive)
+    reference_name_matches: str | None # reference match, again case insensitive substring
+    amount_equals: Decimal | None # exact transaction amount match
+
 class MonzoImportRuleUpdateRequest(BaseModel):
     rules: list["MonzoImportRuleUpdate"]
+
+
+class GcImportRuleUpdateRequest(BaseModel):
+    rules: list["GcImportRuleUpdate"]
+
 
 class MonzoImportRuleUpdate(BaseModel):
     id: UUID
@@ -95,3 +119,20 @@ class MonzoImportRuleUpdate(BaseModel):
     counterparty_name: str | None = None
     transaction_id: UUID | None = None
     metadata: dict[str, str] = {}
+
+
+class GcImportRuleUpdate(BaseModel):
+    id: UUID
+    import_integration_id: UUID
+    name: str
+    payee: str | None
+    new_metadata: dict[str, str] = {}
+    narration: str | None
+    account_id: UUID
+    credit_only: bool = False
+    debit_only: bool = False
+    ignore: bool = False
+    transaction_type: str | None
+    account_name_matches: str | None
+    reference_name_matches: str | None
+    amount_equals: Decimal | None

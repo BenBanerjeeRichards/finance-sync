@@ -65,10 +65,6 @@ class TransactionUpdate(BaseModel):
     note: str
 
 
-class MonzoStore(BaseModel):
-    access_token: str
-    refresh_token: str
-
 
 class GcStore(BaseModel):
     requisition_id: str

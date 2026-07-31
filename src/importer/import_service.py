@@ -1,11 +1,13 @@
 import datetime
 import uuid
+from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel
 from sqlalchemy import update, select, delete, type_coerce
 from sqlalchemy.dialects.postgresql import insert, JSONB
 
-from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule
+from ledger.model import MonzoImportIntegration, GoCardlessImportIntegration, MonzoImportRule, GoCardlessImportRule
 from main import Session
 
 
@@ -44,6 +46,24 @@ class MonzoImportRuleDto(BaseModel):
     counterparty_name: str | None = None
     transaction_id: uuid.UUID | None = None
     metadata: dict[str, str] = {}
+
+
+class GcImportRuleDto(BaseModel):
+    id: uuid.UUID
+    import_integration_id: uuid.UUID
+    name: str
+    priority: int
+    payee: str | None
+    new_metadata: dict[str, str] = {}
+    narration: str | None
+    account_id: uuid.UUID
+    credit_only: bool = False
+    debit_only: bool = False
+    ignore: bool = False
+    transaction_type: str | None
+    account_name_matches: str | None
+    reference_name_matches: str | None
+    amount_equals: Decimal | None
 
 
 # don't bother with repo for now as this is so simple
@@ -177,6 +197,74 @@ class ImportService:
             ) for r in results]
 
     @staticmethod
+    def get_gc_import_rules(import_integration_id: uuid.UUID) -> list[GcImportRuleDto]:
+        with Session.begin() as session:
+            q = select(GoCardlessImportRule).where(
+                GoCardlessImportRule.import_integration_id == import_integration_id
+            ).order_by(GoCardlessImportRule.priority)
+            results = session.execute(q).scalars()
+
+            return [GcImportRuleDto(
+                id=r.id,
+                import_integration_id=r.import_integration_id,
+                name=r.name,
+                priority=r.priority,
+                new_metadata=r.new_metadata,
+                payee=r.payee,
+                narration=r.narration,
+                account_id=r.account_id,
+                debit_only=r.debit_only,
+                credit_only=r.credit_only,
+                ignore=r.ignore,
+                transaction_type=r.transaction_type,
+                account_name_matches=r.account_name_matches,
+                reference_name_matches=r.reference_name_matches,
+                amount_equals=r.amount_equals,
+            ) for r in results]
+
+    @staticmethod
+    def upsert_gc_import_rules(import_integration_id: uuid.UUID, rules: list[GcImportRuleDto]):
+        with Session.begin() as session:
+            for priority, rule in enumerate(rules):
+                stmt = insert(GoCardlessImportRule).values(
+                    id=rule.id,
+                    import_integration_id=rule.import_integration_id,
+                    name=rule.name,
+                    priority=priority,
+                    new_metadata=rule.new_metadata,
+                    payee=rule.payee,
+                    narration=rule.narration,
+                    account_id=rule.account_id,
+                    debit_only=rule.debit_only,
+                    credit_only=rule.credit_only,
+                    ignore=rule.ignore,
+                    transaction_type=rule.transaction_type,
+                    account_name_matches=rule.account_name_matches,
+                    reference_name_matches=rule.reference_name_matches,
+                    amount_equals=rule.amount_equals,
+                )
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=["id"],
+                    set_=dict(
+                        import_integration_id=import_integration_id,
+                        name=rule.name,
+                        priority=priority,
+                        metadata=type_coerce(rule.new_metadata, JSONB),
+                        payee=rule.payee,
+                        narration=rule.narration,
+                        account_id=rule.account_id,
+                        debit_only=rule.debit_only,
+                        credit_only=rule.credit_only,
+                        ignore=rule.ignore,
+                        transaction_type=rule.transaction_type,
+                        account_name_matches=rule.account_name_matches,
+                        reference_name_matches=rule.reference_name_matches,
+                        amount_equals=rule.amount_equals,
+                    )
+                )
+                session.execute(stmt)
+
+    @staticmethod
     def upsert_monzo_import_rules(import_integration_id: uuid.UUID, rules: list[MonzoImportRuleDto]):
         # priority is determined by list order, first item is highest priority
         # this creates and updates rules, but never deletes - use delete_monzo_import_rule for that
@@ -227,3 +315,22 @@ class ImportService:
         with Session.begin() as session:
             stmt = delete(MonzoImportRule).where(MonzoImportRule.id == rule_id)
             session.execute(stmt)
+
+    @staticmethod
+    def delete_gc_import_rule(rule_id: uuid.UUID):
+        with Session.begin() as session:
+            stmt = delete(GoCardlessImportRule).where(GoCardlessImportRule.id == rule_id)
+            session.execute(stmt)
+
+    @staticmethod
+    def get_import_rule_type(import_id: uuid.UUID) -> Literal["gc", "monzo"] | None:
+        with Session.begin() as session:
+            q = select(MonzoImportIntegration).where(MonzoImportIntegration.id == import_id)
+            res = session.execute(q).scalar_one_or_none()
+            if res:
+                return "monzo"
+            q2 = select(GoCardlessImportIntegration).where(GoCardlessImportIntegration.id == import_id)
+            res2 = session.execute(q2).scalar_one_or_none()
+            if res2:
+                return "gc"
+        return None

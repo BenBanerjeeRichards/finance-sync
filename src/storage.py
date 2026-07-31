@@ -1,4 +1,4 @@
-from model import MonzoStore, Transaction, GcStore
+from model import GcStore
 import minio
 import json
 from io import BytesIO
@@ -34,18 +34,6 @@ def write_file(minio_client: minio.Minio, bucket: str, name: str, contents: str)
     content_encoded = contents.encode()
     as_bytes = BytesIO(content_encoded)
     minio_client.put_object(bucket, name, data=as_bytes, length=len(content_encoded), content_type="text/plain")
-
-
-def load_monzo_store(minio_client: minio.Minio) -> MonzoStore:
-    return MonzoStore(**load_file(minio_client, BUCKET, STORE_FILE))
-
-
-def load_gc_store(minio_client: minio.Minio) -> GcStore:
-    return GcStore(**load_file(minio_client, BUCKET, GC_STORE_FILE))
-
-
-def write_gc_store(minio_client: minio.Minio, store: GcStore):
-    write_file(minio_client, BUCKET, GC_STORE_FILE, store.json())
 
 
 T = TypeVar("T", bound=BaseModel)

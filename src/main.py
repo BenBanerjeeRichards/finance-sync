@@ -148,6 +148,8 @@ def main():
         # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")
         # from scripts.backfill_import_rules import backfill_monzo_import_rules
         # backfill_monzo_import_rules(config, settings.monzo_client_id)
+        # from scripts.backfill_santander_import_rules import backfill_santander_import_rules
+        # backfill_santander_import_rules(config, settings.gc_secret_id)
         listen_for_updates(pika_connection, message_handler)
 
     def start_gc_sync():

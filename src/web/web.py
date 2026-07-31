@@ -15,14 +15,15 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from gocardless.gc_connection import GcConnection
-from importer.import_service import ImportService, MonzoImportRuleDto
+from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
-from model import MonzoStore, MonzoSyncMessage
+from model import MonzoSyncMessage
 from monzo import MonzoClient
 from web.model import GetTransactionsParams, GetPayeeParams, GetBalanceHistoryParams, GetBalanceParams, \
-    MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse, MonzoImportRuleUpdateRequest
-
+    MonzoImportConfigResponse, GcImportConfigResponse, MonzoImportRuleResponse, MonzoImportRuleUpdateRequest, \
+    GcImportRuleResponse, GcImportRuleUpdateRequest
+import logging
 
 # TODO setup routes properly
 def hardcoded_url_for(name: str, **kwargs):
@@ -150,25 +151,51 @@ def create_fastapi(monzo_client: MonzoClient, minio_client: Minio, rmq_connectio
 
     @app.get("/finance/import_configuration/{import_id}/rule")
     async def get_import_rules(import_id: uuid.UUID):
-        rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
-        return {
-            "rules": rules
-        }
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+            return {
+                "rules": rules
+            }
+        if kind == "gc":
+            rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
+            return {
+                "rules": rules
+            }
+
+        raise HTTPException(status_code=404, detail="Rule not found")
 
     @app.put("/finance/import_configuration/{import_id}/rule")
-    async def update_import_rules(import_id: uuid.UUID, update: MonzoImportRuleUpdateRequest):
+    async def update_import_rules(import_id: uuid.UUID, update: dict):
         # creates and updates rules, never deletes - use the delete endpoint for that
         # priority is determined by list order, first item is highest priority
-        rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
-        ImportService.upsert_monzo_import_rules(import_id, rules)
-        rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+        kind = ImportService.get_import_rule_type(import_id)
+
+        if kind == "monzo":
+            logging.info("updating monzo rules %s", import_id)
+            update = MonzoImportRuleUpdateRequest(**update)
+            rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
+            ImportService.upsert_monzo_import_rules(import_id, rules)
+            rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+        else:
+            logging.info("updating gc monzo rules %s", import_id)
+            update = GcImportRuleUpdateRequest(**update)
+            rules = [GcImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
+            ImportService.upsert_gc_import_rules(import_id, rules)
+            rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
+
         return {
             "rules": rules
         }
 
     @app.delete("/finance/import_configuration/{import_id}/rule/{rule_id}")
     async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
-        ImportService.delete_monzo_import_rule(rule_id)
+        kind = ImportService.get_import_rule_type(import_id)
+        if kind == "monzo":
+            ImportService.delete_monzo_import_rule(rule_id)
+        elif kind == "gc":
+            ImportService.delete_gc_import_rule(rule_id)
+
 
     return app
 

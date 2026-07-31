@@ -199,3 +199,29 @@ class GoCardlessImportIntegration(Base):
     secret_id: Mapped[str] = mapped_column(unique=True)
     secret_key: Mapped[str] = mapped_column()
     requisition_expires_at: Mapped[datetime | None] = mapped_column()
+
+
+class GoCardlessImportRule(Base):
+    __tablename__ = "gocardless_import_rule"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    import_integration_id: Mapped[UUID] = mapped_column(ForeignKey("go_cardless_importer.id"))
+    name: Mapped[str] = mapped_column()
+    priority: Mapped[int] = mapped_column()
+    new_metadata: Mapped[dict] = mapped_column(
+        JSONB,
+        name="metadata",
+        server_default=text("'{}'::jsonb")
+    )
+    account_id: Mapped[UUID] = mapped_column()
+    payee: Mapped[str | None] = mapped_column()
+    narration: Mapped[str | None] = mapped_column()
+
+
+    credit_only: Mapped[bool] = mapped_column(default=False)
+    debit_only: Mapped[bool] = mapped_column(default=False)
+    ignore: Mapped[bool] = mapped_column(default=False)
+    transaction_type: Mapped[str | None] = mapped_column()
+    account_name_matches: Mapped[str | None] = mapped_column()
+    reference_name_matches: Mapped[str | None] = mapped_column()
+    amount_equals: Mapped[Decimal | None] = mapped_column()
