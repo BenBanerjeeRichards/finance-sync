@@ -1,9 +1,11 @@
 import logging
 
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
-from beancount_sync.beancount_util import create_amount
 from model import *
 from model import Transaction as MonzoTransaction
+
+def create_amount(pence: int) -> Decimal:
+    return Decimal(pence) / Decimal("100")
 
 
 class MonzoTranslater:
@@ -23,6 +25,7 @@ class MonzoTranslater:
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.import_config.cash_account_id
+        assert cash_account is not None
         rule = self._get_transaction_rule(tx)
 
         flagged = False
@@ -67,7 +70,7 @@ class MonzoTranslater:
             external_id=tx.id,
             tx_date=tx_date,
             tx_datetime=tx_datetime,
-            amount=amount.number,
+            amount=amount,
             credit_account_id=credit_account,
             debit_account_id=debit_account,
             payee=rule.payee if rule and rule.payee else payee,
@@ -77,7 +80,7 @@ class MonzoTranslater:
             source="monzo",
             ledger_metadata=rule.metadata if rule else {},
             tags=tx.tags,
-            local_amount=create_amount(tx.local_amount).number,
+            local_amount=create_amount(tx.local_amount),
             local_currency=tx.local_currency
         )
 

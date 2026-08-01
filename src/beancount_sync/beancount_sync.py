@@ -3,13 +3,9 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 import uuid
 from pydantic import BaseModel
-import logging
 
 from model import Config
 from decimal import Decimal
-
-if TYPE_CHECKING:
-    from beancount_sync.beancount import Beancount
 
 
 # Simple transaction with just two legs
@@ -41,14 +37,13 @@ class BadTransactionError(Exception):
 
 class BeancountSync:
 
-    def __init__(self, config: Config, beancount: Beancount):
+    def __init__(self, config: Config):
         from beancount_sync.accrual import BeancountAccruals
         from beancount_sync.energy_sync import EnergySync
 
         self.config = config
-        self.beancount = beancount
-        self.accrual = BeancountAccruals(self.beancount, config)
-        self.energy_sync = EnergySync(self.config, self.beancount)
+        self.accrual = BeancountAccruals(config)
+        self.energy_sync = EnergySync(self.config)
 
     def sync(self):
         """"

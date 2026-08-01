@@ -5,6 +5,8 @@ from decimal import Decimal
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import delete
+
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto
@@ -41,7 +43,6 @@ class LedgerService:
                 return None
             return TransactionDto.model_validate(tx)
 
-
     @staticmethod
     def get_payees(term: str | None) -> list[str]:
         with Session.begin() as session:
@@ -51,7 +52,6 @@ class LedgerService:
     def get_accounts() -> list[AccountDto]:
         with Session.begin() as session:
             return LedgerRepo.get_accounts(session)
-
 
     @staticmethod
     def get_account_by_full_name(session: "Session", name: str) -> AccountDto:
@@ -65,17 +65,16 @@ class LedgerService:
         with Session.begin() as session:
             return LedgerRepo.get_tags(session)
 
-
     @staticmethod
     def get_balance(filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
         with Session.begin() as session:
             return LedgerRepo.get_balances(session, filters, account_types)
 
     @staticmethod
-    def get_balance_history(filters: TransactionFilters, account_types: list[str], period: Literal["day", "month", "week"]) -> PeriodicBalancesDto:
+    def get_balance_history(filters: TransactionFilters, account_types: list[str],
+                            period: Literal["day", "month", "week"]) -> PeriodicBalancesDto:
         with Session.begin() as session:
             return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
-
 
     def sync_ledger(self):
         accruals = [a.liability_account for a in self.config.accruals] + [a.expense_account for a in
@@ -99,7 +98,7 @@ class LedgerService:
             for l in ledger_names:
                 LedgerRepo.ensure_ledger(session, l)
 
-    def write_beancount_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
+    def create_or_update_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
         self.sync_ledger()
         import time as t_time
         start = t_time.time()
@@ -152,6 +151,21 @@ class LedgerService:
             LedgerRepo.bulk_upsert_entries(session, entries)
         duration = int((t_time.time() - start) * 1000)
         logging.info("synced transactions to ledger {} in {}ms".format(ledger_name, duration))
+
+    @staticmethod
+    def find_all_by_metadata_by_date_desc(session, key: str, value: str) -> list[TransactionDto]:
+        res = LedgerRepo.find_all_by_metadata_by_date_desc(session, key, value)
+        return [TransactionDto.model_validate(x) for x in res]
+
+    @staticmethod
+    def delete_transactions(session, ids: list[uuid.UUID]):
+        q = delete(Transaction).where(Transaction.id.in_(ids))
+        session.execute(q)
+
+    @staticmethod
+    def delete_transactions_by_key(session, ids: list[str]):
+        q = delete(Transaction).where(Transaction.key.in_(ids))
+        session.execute(q)
 
     @staticmethod
     def compute_key(dt: datetime, payee: str, narration: str, amount: Decimal) -> str:

@@ -6,7 +6,6 @@ from minio import Minio
 from pydantic import BaseModel
 import logging
 
-from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import SimpleLedgerTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
@@ -64,8 +63,7 @@ class Handler:
     """
 
     def __init__(self, config: Config,settings: Settings, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
-                 santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier,
-                 beancount: Beancount):
+                 santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier):
         self.config = config
         self.settings = settings
         self.minio_client = minio_client
@@ -76,8 +74,7 @@ class Handler:
         self.monzo_importer = MonzoImporter(config, monzo_client, self.minio_client)
         self.notifier = notifier
         self.store = Store(self.minio_client)
-        self.beancount = beancount
-        self.beancount_sync = BeancountSync(config, beancount)
+        self.beancount_sync = BeancountSync(config)
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
@@ -137,7 +134,7 @@ def sync_santander_ledger(config: Config, store: Store, beancount_sync: Beancoun
 
     logging.info("writing santander to db")
     ledger = LedgerService(config)
-    ledger.write_beancount_transactions("santander.bean", ledger_transactions)
+    ledger.create_or_update_transactions("santander.bean", ledger_transactions)
 
 def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
     from importer.import_service import ImportService
@@ -158,6 +155,6 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
 
     ledger = LedgerService(config)
     logging.info("writing monzo to db (%s)", len(ledger_transactions))
-    ledger.write_beancount_transactions("monzo.bean", ledger_transactions)
+    ledger.create_or_update_transactions("monzo.bean", ledger_transactions)
 
     beancount_sync.sync()

@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select, delete, tuple_, or_, func, desc, Select
+from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session, defer
 import logging
@@ -45,7 +45,6 @@ class LedgerRepo:
     def get_accounts(session) -> list[AccountDto]:
         return [AccountDto.model_validate(a) for a in session.scalars(select(Account))]
 
-
     @staticmethod
     def get_account_by_full_name(session, full_name: str) -> AccountDto | None:
         # TODO we can remove this once fully migrated
@@ -66,7 +65,6 @@ class LedgerRepo:
     @staticmethod
     def get_ledgers(session) -> list[LedgerDto]:
         return [LedgerDto.model_validate(l) for l in session.scalars(select(Ledger))]
-
 
     @staticmethod
     def get_transaction_by_id(session: Session, id: uuid.UUID) -> Transaction | None:
@@ -96,6 +94,12 @@ class LedgerRepo:
         return result[:count], None
 
     @staticmethod
+    def find_all_by_metadata_by_date_desc(session: Session, key: str, value: str) -> list[Transaction]:
+        q = select(Transaction).where(Transaction.tx_metadata.contains({key: value})).order_by(
+            Transaction.transaction_datetime.desc(), Transaction.id.desc())
+        return list(session.scalars(q).all())
+
+    @staticmethod
     def get_balances(session: Session, filters: TransactionFilters, account_types: list[str] = None) -> BalancesDto:
         q = select(Entry.account_id.label("account_id"), func.sum(Entry.amount).label("balance"))
         q = q.join(Transaction.entries).join(Entry.account)
@@ -107,7 +111,6 @@ class LedgerRepo:
         for item in session.execute(q):
             balance_dto.balances.append(BalanceEntryDto(account_id=item.account_id, amount=item.balance or 0))
         return balance_dto
-
 
     @staticmethod
     def get_balances_over_time(
@@ -139,7 +142,8 @@ class LedgerRepo:
         )
 
     @staticmethod
-    def _get_transaction_filter_query(q: Select[tuple[Transaction]], filters: TransactionFilters) -> Select[tuple[Transaction]]:
+    def _get_transaction_filter_query(q: Select[tuple[Transaction]], filters: TransactionFilters) -> Select[
+        tuple[Transaction]]:
         if filters.created_gt:
             q = q.where(Transaction.transaction_datetime >= filters.created_gt)
         if filters.created_lt:
@@ -159,12 +163,11 @@ class LedgerRepo:
             ))
         return q
 
-
     @staticmethod
     def get_payees(session: Session, filter: str | None = None) -> list[str]:
         q = select(Transaction.payee).distinct()
         if filter:
-             q = q.where(Transaction.payee.ilike(f"%{filter}%"))
+            q = q.where(Transaction.payee.ilike(f"%{filter}%"))
         q = q.limit(100)
         return list(session.scalars(q).all())
 
@@ -188,9 +191,14 @@ class LedgerRepo:
     def bulk_upsert_transactions(session: Session, transactions: list[Transaction]) -> dict[str, UUID]:
         if not transactions:
             return {}
-        logging.info("upserting %s transactions", len(transactions))
+
+        mapper = inspect(Transaction)
         data_to_upsert = [
-            {k: v for k, v in tx.__dict__.items() if k != '_sa_instance_state'}
+            {
+                prop.columns[0].name: getattr(tx, prop.key)
+                for prop in mapper.column_attrs
+                if getattr(tx, prop.key) is not None
+            }
             for tx in transactions
         ]
         stmt = insert(Transaction.__table__)
@@ -214,7 +222,6 @@ class LedgerRepo:
         if not entries:
             return
 
-        logging.info("upserting %s entries", len(entries))
         data_to_upsert = [
             {k: v for k, v in entry.__dict__.items() if k != '_sa_instance_state'}
             for entry in entries
@@ -242,6 +249,5 @@ class LedgerRepo:
         cleanup = delete(Entry).where(Entry.transaction_id.in_(transaction_ids)).where(
             tuple_(Entry.transaction_id, Entry.account_id).not_in(tx_acc_ids))
         res = session.execute(cleanup)
-        logging.info("cleanup cleaned %s ledger entries", res.rowcount)
-
-
+        if res.rowcount > 0:
+            logging.info("cleanup cleaned %s ledger entries", res.rowcount)

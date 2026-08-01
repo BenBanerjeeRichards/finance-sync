@@ -1,4 +1,3 @@
-from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from ledger.ledger_service import LedgerService
 from main import Session
@@ -20,10 +19,32 @@ VALUE_LIABILITY = "liability"
 
 
 class BeancountAccruals:
+    """
+    The aim of this is to help splitting out things that are billed in arrears for multiple periods (months)
+    E.g. a quarterly bill only received at the end of the Q
+    If treated on a cash basis, it creates a spike in Expenses at the end of the Q which makes it harder to understand
+    the actual expenses
 
-    def __init__(self, beancount: Beancount, config: Config):
-        self.beancount = beancount
+    There are two parts to this.
+        1. When a (e.g.) quarterly bill is paid (settlement), create the liabilities in the prior 3 months. Only one
+           month below shown for example indicating the liability (also 2 prior also created) and the settlement
+
+        01/03/2026  Factor Liability
+            Expense:Factor              £80
+                Liability:Factor                £80
+
+        30/03/2026  Factor Settlement
+            Liability:Factor            £240
+                Asset:Monzo                     £240
+
+        2. When settlement has not yet occurred but a bill is expected, create provisional liabiltes based on the
+           past settlement amounts. This means we continue to book expenses prior to settlement. After settlement,
+           these are replaced with the actual liabilities
+    """
+
+    def __init__(self, config: Config):
         self.config = config
+        self.ledger_service = LedgerService(config)
 
     def run_accruals(self):
         with Session.begin() as session:
@@ -32,9 +53,9 @@ class BeancountAccruals:
 
     def process_accrual(self, session: "Session", rule: AccrualConfig):
         logging.info("Calculating accruals for rule %s", rule.metadata_key)
-        settlements = self.beancount.find_all_by_metadata_by_date_desc(rule.metadata_key, VALUE_SETTLEMENT)
-        provisional_liabilities = self.beancount.find_all_by_metadata_by_date_desc(rule.metadata_key,
-                                                                                   VALUE_PROVISIONAL_LIABILITY)
+        settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
+        provisional_liabilities = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key,
+                                                                                  VALUE_PROVISIONAL_LIABILITY)
         if not settlements:
             # If we have not yet had any actual transactions, we have nothing to base the liabilities on
             logging.warning("No settlements found for rule %s, can't compute any liabilities", rule.metadata_key)
@@ -43,42 +64,36 @@ class BeancountAccruals:
         settlement_transactions: list[SimpleLedgerTransaction] = []
 
         for settlement in settlements:
-            settlement_key = settlement.meta.get("external_id")
-            liability_amounts = split_money_decimal(abs(settlement.postings[0].units.number), rule.settlement_months)
-            if not settlement_key:
-                logging.error("settlement has no external id %s", settlement)
-                continue
-
-            liability_months = [(settlement.date - relativedelta(months=n + 1)).replace(day=1) for n in
+            liability_amounts = split_money_decimal(abs(settlement.entries[0].amount), rule.settlement_months)
+            liability_months = [(settlement.transaction_datetime.date() - relativedelta(months=n + 1)).replace(day=1)
+                                for n in
                                 range(rule.settlement_months)]
 
             for i, liability_date in enumerate(liability_months):
-                liability_key = f"{settlement_key}-{liability_date.isoformat()}"
+                liability_key = f"{settlement.key}-{liability_date.isoformat()}"
                 credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
                 expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
                 tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
                                              credit_account_id=credit_account_id, debit_account_id=expense_account_id,
-                                             payee=settlement.payee,
+                                             payee=settlement.payee or "",
                                              description=f"{rule.name} - incurred liability",
                                              flagged=False,
                                              ledger_metadata={
-                                              rule.metadata_key: VALUE_LIABILITY
-                                          }, source="accrual", amount=abs(liability_amounts[i]),
+                                                 rule.metadata_key: VALUE_LIABILITY
+                                             }, source="accrual", amount=abs(liability_amounts[i]),
                                              metadata={})
                 settlement_transactions.append(tx)
 
-        with self.beancount.transaction() as beancount_tx:
-            for tx in settlement_transactions:
-                beancount_tx.create_or_update_transaction(self.config.accrualBeanFileName, tx)
+        self.ledger_service.create_or_update_transactions(self.config.accrualBeanFileName, settlement_transactions)
 
-        settlements = self.beancount.find_all_by_metadata_by_date_desc(rule.metadata_key, VALUE_SETTLEMENT)
+        settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         if not settlements:
             logging.warning("(provisional) no settlements found for rule %s", rule.name)
             return
         most_recent_settlement = settlements[0]
-        provisional_transactions = []
+        provisional_transactions: list[SimpleLedgerTransaction] = []
 
-        diff = relativedelta(datetime.date.today(), most_recent_settlement.date)
+        diff = relativedelta(datetime.date.today(), most_recent_settlement.transaction_datetime.date())
         months_since_last_settlement = (diff.years * 12) + diff.months + 1  # 1 to include current month
 
         if months_since_last_settlement <= 0:
@@ -88,11 +103,12 @@ class BeancountAccruals:
 
         # we include the last settlement month in case settlement occurs often doesn't include that month
         # this would lead to a gap
-        provisional_liability_months = [(most_recent_settlement.date + relativedelta(months=n)).replace(day=1) for n in
-                                        range(months_since_last_settlement)]
+        provisional_liability_months = [
+            (most_recent_settlement.transaction_datetime.date() + relativedelta(months=n)).replace(day=1) for n in
+            range(months_since_last_settlement)]
 
         # Take 10% more than the highest from recent transactions to be slightly pessimistic
-        max_recent = max([abs(s.postings[0].units.number) for s in settlements[:4]])
+        max_recent = max([abs(s.entries[0].amount) for s in settlements[:4]])
         estimated_amount = Decimal(str(max_recent)) * Decimal('1.10')
         estimated_liability = split_money_decimal(estimated_amount, rule.settlement_months)[0]
         logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name,
@@ -101,31 +117,27 @@ class BeancountAccruals:
             credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
             expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
 
-            liability_key = f"provisional-{most_recent_settlement.meta["external_id"]}-{liability_date.isoformat()}"
+            liability_key = f"provisional-{most_recent_settlement.key}-{liability_date.isoformat()}"
             tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
                                          credit_account_id=credit_account_id, debit_account_id=expense_account_id,
-                                         payee=most_recent_settlement.payee,
+                                         payee=most_recent_settlement.payee or "",
                                          description=f"{rule.name} - provisional liability",
                                          flagged=False,
                                          ledger_metadata={
-                                          rule.metadata_key: VALUE_PROVISIONAL_LIABILITY
-                                      }, source="accrual", amount=abs(estimated_liability))
+                                             rule.metadata_key: VALUE_PROVISIONAL_LIABILITY
+                                         }, source="accrual", amount=abs(estimated_liability))
             provisional_transactions.append(tx)
 
         # Find any provisional liabilities that exist in journal but not created here
         # These should be deleted to ensure this process is idempotent
         new_transaction_ids = [tx.external_id for tx in provisional_transactions]
-        existing_provisional_ids = [pl.meta["external_id"] for pl in provisional_liabilities]
-        delete_tx_ids = set(existing_provisional_ids) - set(new_transaction_ids)
-        if delete_tx_ids:
-            logging.warning("%s: deleting transactions: %s", rule.name, delete_tx_ids)
+        existing_provisional_ids = [pl.key for pl in provisional_liabilities]
+        delete_tx_keys = set(existing_provisional_ids) - set(new_transaction_ids)
+        if delete_tx_keys:
+            logging.warning("%s: deleting transactions: %s", rule.name, delete_tx_keys)
 
-        with self.beancount.transaction() as beancount_tx:
-            for tx in provisional_transactions:
-                beancount_tx.create_or_update_transaction(self.config.accrualBeanFileName, tx)
-            for tx_id in delete_tx_ids:
-                beancount_tx.delete_transaction(self.config.accrualBeanFileName, tx_id)
-
+        self.ledger_service.create_or_update_transactions(self.config.accrualBeanFileName, provisional_transactions)
+        self.ledger_service.delete_transactions_by_key(session, list(delete_tx_keys))
 
 def split_money_decimal(total_amount, n):
     total = Decimal(str(total_amount)).quantize(Decimal('0.01'))

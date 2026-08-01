@@ -7,7 +7,6 @@ import requests
 from pydantic import BaseModel
 import logging
 
-from beancount_sync.beancount import Beancount
 from beancount_sync.beancount_sync import SimpleLedgerTransaction
 from ledger.ledger_service import LedgerService
 from main import Session
@@ -39,9 +38,8 @@ class EnergyClient:
 # Tracks energy usage by crediting prepay asset with monthly usage
 class EnergySync:
 
-    def __init__(self, config: Config, beancount: Beancount):
+    def __init__(self, config: Config):
         self.config = config
-        self.beancount = beancount
 
         # TODO support configuring this in the frontend
         with Session.begin() as session:
@@ -70,21 +68,20 @@ class EnergySync:
     def _create_energy_transactions(self, client: EnergyClient, meter_type: Literal["gas", "electricity"],
                                     asset_account: uuid.UUID, expense_account: uuid.UUID):
         readings = client.get_monthly_readings(self.config.energy.startMonth, meter_type)
-
-        with self.beancount.transaction() as beancount_tx:
-            for month, reading_amount in readings.items():
-                external_id = f"energy_{meter_type}_{month}"  # idempotency key, one reading we update per month
-                reading_date = datetime.datetime.strptime(month, "%Y-%m").date()
-                amount = Decimal(reading_amount) / Decimal("100")
-                tx = SimpleLedgerTransaction(external_id=external_id,
-                                             tx_date=reading_date,
-                                             credit_account_id=asset_account,
-                                             debit_account_id=expense_account,
-                                             payee=f"Energy consumption ({meter_type})",
-                                             description="",
-                                             flagged=False,
-                                             ledger_metadata={},
-                                             source="energy",
-                                             amount=amount,
-                                             metadata={})
-                beancount_tx.create_or_update_transaction(self.config.accrualBeanFileName, tx)
+        transactions = []
+        for month, reading_amount in readings.items():
+            external_id = f"energy_{meter_type}_{month}"  # idempotency key, one reading we update per month
+            reading_date = datetime.datetime.strptime(month, "%Y-%m").date()
+            amount = Decimal(reading_amount) / Decimal("100")
+            transactions.append(SimpleLedgerTransaction(external_id=external_id,
+                                         tx_date=reading_date,
+                                         credit_account_id=asset_account,
+                                         debit_account_id=expense_account,
+                                         payee=f"Energy consumption ({meter_type})",
+                                         description="",
+                                         flagged=False,
+                                         ledger_metadata={},
+                                         source="energy",
+                                         amount=amount,
+                                         metadata={}))
+        LedgerService(self.config).create_or_update_transactions(self.config.accrualBeanFileName, transactions)

@@ -3,10 +3,9 @@ import asyncio
 import uvicorn
 import yaml
 from pika.adapters.blocking_connection import BlockingConnection
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from beancount_sync.beancount import Beancount
 from notification.notifier import Notifier
 from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_UPDATED
 from importer.santander_import import SantanderImporter
@@ -25,11 +24,11 @@ from storage import Store
 from notification.discord import DiscordClient
 from model import Config
 
-# Don't include timestamp, we will just use loki ingestion timestamp
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
+# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 # sqlA module level constants
 
@@ -131,7 +130,6 @@ def main():
     notifier = Notifier(discord_client)
     santander_importer = SantanderImporter(config, settings.gc_secret_id, settings.gc_secret_key, minio_client)
     pika_connection = pika.BlockingConnection(pika.URLParameters(settings.rabbitmq_connection_string))
-    beancount = Beancount(minio_client, pika_connection, config)
 
     from ledger.ledger_service import LedgerService
     from web.web import create_fastapi
@@ -143,7 +141,7 @@ def main():
 
         message_handler = Handler(config, settings, minio_client, discord_client, monzo_client, santander_importer,
                                   pika_connection,
-                                  notifier, beancount)
+                                  notifier)
         # backfill_monzo(config, pika_connection.channel(), minio_client, "actual-sync.transactions", in_only=True)
         # backfill_from_beancount(config, pika_connection.channel(), minio_client, "actual-sync.transactions", "ledger", "FY24.bean")
         # backfill_santander_gc(config, pika_connection.channel(), minio_client, "actual-sync.transactions")

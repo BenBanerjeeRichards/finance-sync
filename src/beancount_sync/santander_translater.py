@@ -2,7 +2,6 @@ from operator import abs
 
 from importer.import_service import GcImportIntegrationDto, ImportService, GcImportRuleDto
 from model import *
-from beancount_sync.beancount_util import create_amount_from_decimal
 
 import logging
 
@@ -37,12 +36,12 @@ class SantanderTranslater:
 
         if tx.amount >= 0:
             # Positive is money coming into the santander account, so we debit the cash account
-            credit_amount = create_amount_from_decimal(tx.amount)
+            credit_amount = Decimal(tx.amount)
             debit_account = cash_account
             credit_account = other_account
         else:
             # Spending money from the cash account
-            credit_amount = create_amount_from_decimal(tx.amount * -1)
+            credit_amount = Decimal(tx.amount * -1)
             debit_account = other_account
             credit_account = cash_account
 
@@ -55,13 +54,13 @@ class SantanderTranslater:
                 description = account_rule.narration
 
         # santander only provides date, currency always GBP (local currency not provided)
-        return SimpleLedgerTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount.number,
+        return SimpleLedgerTransaction(external_id=tx.id, tx_date=tx.date, amount=credit_amount,
                                        credit_account_id=credit_account,
                                        debit_account_id=debit_account,
                                        payee=payee or "",
                                        description=description or "", flagged=flagged,
                                        metadata=tx.model_dump(mode="json"), source="santander", ledger_metadata=ledger_metadata,
-                                       local_amount=abs(credit_amount.number), local_currency="GBP")
+                                       local_amount=abs(credit_amount), local_currency="GBP")
 
     def _get_santander_account(self, tx: SantanderTransaction) -> GcImportRuleDto | None:
         for rule in self.import_rules:
