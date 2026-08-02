@@ -6,7 +6,7 @@ from model import *
 import logging
 
 from santander import SantanderTransaction
-from transform.beancount_sync import SimpleLedgerTransaction
+from poster.beancount_sync import SimpleLedgerTransaction
 
 
 class SantanderTranslater:

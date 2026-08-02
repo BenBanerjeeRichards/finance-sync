@@ -1,4 +1,4 @@
-from transform.beancount_sync import SimpleLedgerTransaction
+from poster.beancount_sync import SimpleLedgerTransaction
 from notification.discord import DiscordClient
 
 

@@ -1,6 +1,6 @@
 import logging
 
-from transform.beancount_sync import SimpleLedgerTransaction
+from poster.beancount_sync import SimpleLedgerTransaction
 from model import *
 from model import Transaction as MonzoTransaction
 
