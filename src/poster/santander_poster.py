@@ -19,12 +19,12 @@ class SantanderPoster(BasePoster):
 
     def run(self):
         santander_transactions = dependencies.get_transactions_store().load(SANTANDER_TX_FILE, SantanderTransactions).transactions
-        mapped_transactions = [self.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
+        mapped_transactions = [self.translate_to_ledger(from_gc(tx)) for tx in santander_transactions]
         ledger_transactions = [tx for tx in mapped_transactions if tx]
         logging.info("writing santander to db")
         dependencies.get_ledger_service().create_or_update_transactions("santander.bean", ledger_transactions)
 
-    def translate_to_beancount(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
+    def translate_to_ledger(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
         cash_account = self.import_config.cash_account_id
         flagged = False
 
