@@ -76,30 +76,8 @@ class LedgerService:
         with Session.begin() as session:
             return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
-    def sync_ledger(self):
-        accruals = [a.liability_account for a in self.config.accruals] + [a.expense_account for a in
-                                                                          self.config.accruals]
-        accounts = ([r.account for r in self.config.accountRules] +
-                    [r.accountName for r in self.config.santanderAccountRules] +
-                    list(self.config.monzoCategoryMappings.values())
-                    + [self.config.defaultIncomeAccount,
-                       self.config.defaultExpenseAccount, self.config.energy.gasExpenseAccount,
-                       self.config.energy.gasPrepayAccount, self.config.energy.electricityPrepayAccount,
-                       self.config.energy.electricityExpenseAccount
-                       ] + accruals)
-
-        logging.info("ensuring accounts and ledgers")
-        with Session.begin() as session:
-            for acc in accounts:
-                acc = LedgerService._from_beancount_account_name(acc)
-                LedgerRepo.ensure_account(session, acc)
-
-            ledger_names = ["main", "accrual", "FY24", "monzo", "santander"]
-            for l in ledger_names:
-                LedgerRepo.ensure_ledger(session, l)
 
     def create_or_update_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
-        self.sync_ledger()
         import time as t_time
         start = t_time.time()
         # 1. Create transactions

@@ -55,9 +55,6 @@ class BeancountSync:
     def _update_ledger(self) -> None:
 
         # TODO move elsewhere
-        from ledger.ledger_service import LedgerService
-        LedgerService(self.config).sync_ledger()
-
         # Compute any new accrual transactions & energy
         self.accrual.run_accruals()
         self.energy_sync.run_energy_sync()
