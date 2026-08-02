@@ -449,13 +449,12 @@ class ImportService:
             stmt = delete(GoCardlessImportRule).where(GoCardlessImportRule.id == rule_id)
             session.execute(stmt)
 
-    @staticmethod
-    def get_import_rules(import_id: uuid.UUID) -> tuple[Literal["monzo", "gc"], list[MonzoImportRuleDto] | list[GcImportRuleDto]]:
+    def get_import_rules(self, import_id: uuid.UUID) -> tuple[Literal["monzo", "gc"], list[MonzoImportRuleDto] | list[GcImportRuleDto]]:
         kind = ImportService.get_import_rule_type(import_id)
         if kind == "monzo":
-            return kind, ImportService.get_monzo_import_rules(import_id)
+            return kind, self.get_monzo_import_rules(import_id)
         if kind == "gc":
-            return kind, ImportService.get_gc_import_rules(import_id)
+            return kind, self.get_gc_import_rules(import_id)
         raise ValueError(f"No import rules found for id {import_id}")
 
     @staticmethod

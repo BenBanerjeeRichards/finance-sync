@@ -11,12 +11,10 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 import dependencies
-from gocardless.gc_connection import GcConnection
 from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
 from model import MonzoSyncMessage
-from monzo import MonzoClient
 from web.model import *
 import logging
 
@@ -34,20 +32,20 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals['hardcoded_url_for'] = hardcoded_url_for
 
-def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
-                   gc_connection: GcConnection, ledger_service: LedgerService) -> FastAPI:
+def create_fastapi() -> FastAPI:
     app = FastAPI(root_path=os.environ.get("make"), redirect_slashes=False)
     app.mount("/finance/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
-
+    import_service = dependencies.get_import_service()
+    ledger_service = dependencies.get_ledger_service()
     def _get_channel() -> BlockingChannel:
         # just make new connection so we don't have to worry about maintaining
         # heartbeats
-        return pika.BlockingConnection(pika.URLParameters(rmq_connection_string)).channel()
+        return pika.BlockingConnection(pika.URLParameters(dependencies.get_settings().rabbitmq_connection_string)).channel()
 
     @app.get("/finance/")
     async def index(request: Request):
         return templates.TemplateResponse("index.html",
-                                          {"request": request, "start_monzo_url": monzo_client.get_start_ouath_url()})
+                                          {"request": request, "start_monzo_url": dependencies.get_monzo_client().get_start_ouath_url()})
 
     @app.get("/finance/success")
     async def success(request: Request):
@@ -56,7 +54,7 @@ def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
     @app.get("/finance/monzo_redirect")
     async def monzo_redirect(request: Request):
         params = dict(request.query_params)
-        access, refresh = monzo_client.exchange_code(params["code"])
+        access, refresh = dependencies.get_monzo_client().exchange_code(params["code"])
         ImportService.update_monzo_tokens(params["state"], access, refresh)
         return templates.TemplateResponse("success.html", {"request": request})
 
@@ -79,12 +77,12 @@ def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
 
     @app.get("/finance/start-requisition")
     async def start_gc_req():
-        link_url = gc_connection.start_requisition()
+        link_url = dependencies.get_gc_connection().start_requisition()
         return RedirectResponse(link_url)
 
     @app.get("/finance/complete-requisition")
     async def start_gc_req(request: Request, ref: str):
-        gc_connection.complete_requisition(ref)
+        dependencies.get_gc_connection().complete_requisition(ref)
         return templates.TemplateResponse("success.html", {"request": request})
 
 
@@ -160,7 +158,7 @@ def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
     @app.get("/finance/import_configuration/{import_id}/rule")
     async def get_import_rules(import_id: uuid.UUID):
         try:
-            kind, rules = ImportService.get_import_rules(import_id)
+            kind, rules = import_service.get_import_rules(import_id)
         except ValueError:
             raise HTTPException(status_code=404, detail="Rule not found")
 
@@ -180,7 +178,7 @@ def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
                 update = MonzoImportRuleUpdateRequest(**update)
                 rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
                 ImportService.upsert_monzo_import_rules(import_id, rules)
-                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in dependencies.get_import_service().get_monzo_import_rules(import_id)]
+                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in import_service.get_monzo_import_rules(import_id)]
             else:
                 logging.info("updating gc monzo rules %s", import_id)
                 update = GcImportRuleUpdateRequest(**update)
