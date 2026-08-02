@@ -5,9 +5,9 @@ from functools import wraps
 from pydantic import BaseModel
 import logging
 
-from beancount_sync.beancount_sync import SimpleLedgerTransaction, BeancountSync
-from beancount_sync.monzo_translater import MonzoTranslater
-from beancount_sync.santander_translater import SantanderTranslater
+from transform.beancount_sync import SimpleLedgerTransaction, BeancountSync
+from transform.monzo_translater import MonzoTranslater
+from transform.santander_translater import SantanderTranslater
 from container import Container
 from importer.import_service import ImportService
 from importer.monzo_import import MonzoImporter

@@ -7,7 +7,7 @@ import requests
 from pydantic import BaseModel
 import logging
 
-from beancount_sync.beancount_sync import SimpleLedgerTransaction
+from transform.beancount_sync import SimpleLedgerTransaction
 from ledger.ledger_service import LedgerService
 from main import Session
 from model import Config

@@ -38,8 +38,8 @@ class BadTransactionError(Exception):
 class BeancountSync:
 
     def __init__(self, config: Config):
-        from beancount_sync.accrual import BeancountAccruals
-        from beancount_sync.energy_sync import EnergySync
+        from transform.accrual import BeancountAccruals
+        from transform.energy_sync import EnergySync
 
         self.config = config
         self.accrual = BeancountAccruals(config)

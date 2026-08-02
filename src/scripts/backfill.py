@@ -3,9 +3,9 @@ from beancount.core.data import Transaction as BcTransaction
 from beancount.loader import load_string
 from pika.adapters.blocking_connection import BlockingChannel
 
-from beancount_sync.beancount_sync import SimpleLedgerTransaction
-from beancount_sync.monzo_translater import MonzoTranslater
-from beancount_sync.santander_translater import SantanderTranslater
+from transform.beancount_sync import SimpleLedgerTransaction
+from transform.monzo_translater import MonzoTranslater
+from transform.santander_translater import SantanderTranslater
 from model import Config, SantanderTransactions, Transaction
 from santander import from_gc
 from storage import Store, SANTANDER_TX_FILE, MONZO_TX_FILE

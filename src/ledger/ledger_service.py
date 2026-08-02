@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete
 
-from beancount_sync.beancount_sync import SimpleLedgerTransaction
+from transform.beancount_sync import SimpleLedgerTransaction
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto
 from ledger.model import Account, Transaction, Entry, AccountType
