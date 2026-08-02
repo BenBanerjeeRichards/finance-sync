@@ -7,10 +7,11 @@ import requests
 from pydantic import BaseModel
 import logging
 
-from poster.beancount_sync import SimpleLedgerTransaction
+import dependencies
+from model import SimpleLedgerTransaction
+from poster.base_poster import BasePoster
 from ledger.ledger_service import LedgerService
 from main import Session
-from model import Config
 import uuid
 
 
@@ -36,14 +37,14 @@ class EnergyClient:
 
 
 # Tracks energy usage by crediting prepay asset with monthly usage
-class EnergySync:
+class EnergyConsumptionPoster(BasePoster):
 
-    def __init__(self, config: Config):
-        self.config = config
+    def __init__(self):
+        self.config = dependencies.get_config()
 
         # TODO support configuring this in the frontend
 
-    def run_energy_sync(self):
+    def run(self):
         if not self.config.energy:
             logging.info("Energy Sync not configured, skipping")
             return

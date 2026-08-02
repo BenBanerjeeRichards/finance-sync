@@ -2,7 +2,6 @@ import logging
 
 import dependencies
 from poster.base_poster import BasePoster
-from poster.beancount_sync import SimpleLedgerTransaction
 from model import *
 from model import Transaction as MonzoTransaction
 from storage import MONZO_TX_FILE

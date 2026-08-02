@@ -6,12 +6,9 @@ from pydantic import BaseModel
 import logging
 
 import dependencies
-from poster.beancount_sync import SimpleLedgerTransaction
-from poster.monzo_poster import MonzoPoster
-from poster.santander_poster import SantanderPoster
-from importer.import_service import ImportService
+from poster.poster import run_posters
 from importer.monzo_import import MonzoImporter
-from model import  MonzoSyncMessage, TransactionUpdate
+from model import MonzoSyncMessage, TransactionUpdate, SimpleLedgerTransaction
 from storage import Store
 
 
@@ -64,12 +61,12 @@ class Handler:
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
         sync_since = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=sync_message.past_days)
         self.monzo_importer.import_transactions(sync_since)
-        sync_monzo_ledger()
+        run_posters()
 
     @rmq_handler(TransactionUpdate)
     def on_monzo_update_notes(self, updates: list[TransactionUpdate]):
         self.monzo_importer.update_notes(updates)
-        sync_monzo_ledger()
+        run_posters()
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
@@ -81,8 +78,7 @@ class Handler:
 
     @rmq_handler()
     def on_update_ledger(self):
-        sync_monzo_ledger()
-        sync_santander_ledger()
+        run_posters()
 
     @rmq_handler()
     def on_santander_sync_transactions(self):
@@ -92,36 +88,10 @@ class Handler:
         age_days = santander_importer.update_expires_dates()
         if age_days >= config.config.gocardless.notifyOlderThan:
             dependencies.get_notifier().notify_expiring("GoCardless", config.gocardless.startUri, 90 - age_days)
-        sync_santander_ledger()
+        run_posters()
 
     @rmq_handler(SimpleLedgerTransaction)
     def notify_new_transaction(self, tx: SimpleLedgerTransaction):
         config = dependencies.get_config()
         if tx.credit_account == config.santanderCashAccount or tx.debit_account == config.santanderCashAccount:
             dependencies.get_notifier().send_santander_discord_notification(config.santanderCashAccount, tx)
-
-
-def sync_santander_ledger():
-    santander_configs = [c for c in ImportService.get_gc_configs() if c.kind == "santander"]
-    if len(santander_configs) != 1:
-        logging.error("Expected exactly one santader config, got %s", len(santander_configs))
-        return
-    santander_config = santander_configs[0]
-    if None in [santander_config.default_expense_account_id, santander_config.default_income_account_id, santander_config.cash_account_id]:
-        logging.error("Santander config not yet configured, skipping...")
-        return
-
-    SantanderPoster(santander_config).run()
-
-def sync_monzo_ledger():
-    from importer.import_service import ImportService
-    monzo_configs = ImportService.get_monzo_configs()
-    if len(monzo_configs) != 1:
-        logging.error("Expected exactly one monzo config, got %s", len(monzo_configs))
-        return
-    monzo_config = monzo_configs[0]
-    if None in [monzo_config.default_expense_account_id, monzo_config.default_income_account_id, monzo_config.cash_account_id]:
-        logging.error("Monzo config not yet configured, skipping...")
-        return
-
-    MonzoPoster(monzo_config).run()

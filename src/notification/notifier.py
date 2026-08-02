@@ -1,4 +1,4 @@
-from poster.beancount_sync import SimpleLedgerTransaction
+from model import SimpleLedgerTransaction
 from notification.discord import DiscordClient
 
 

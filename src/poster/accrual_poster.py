@@ -1,7 +1,8 @@
-from poster.beancount_sync import SimpleLedgerTransaction
+import dependencies
+from poster.base_poster import BasePoster
 from ledger.ledger_service import LedgerService
 from main import Session
-from model import Config, AccrualConfig
+from model import AccrualConfig, SimpleLedgerTransaction
 import logging
 from decimal import Decimal
 from dateutil.relativedelta import relativedelta
@@ -18,7 +19,7 @@ VALUE_PROVISIONAL_LIABILITY = "provisional_liability"
 VALUE_LIABILITY = "liability"
 
 
-class BeancountAccruals:
+class AccrualsPoster(BasePoster):
     """
     The aim of this is to help splitting out things that are billed in arrears for multiple periods (months)
     E.g. a quarterly bill only received at the end of the Q
@@ -42,11 +43,11 @@ class BeancountAccruals:
            these are replaced with the actual liabilities
     """
 
-    def __init__(self, config: Config):
-        self.config = config
-        self.ledger_service = LedgerService(config)
+    def __init__(self):
+        self.config = dependencies.get_config()
+        self.ledger_service = LedgerService(self.config)
 
-    def run_accruals(self):
+    def run(self):
         with Session.begin() as session:
             for rule in self.config.accruals:
                 self.process_accrual(session, rule)

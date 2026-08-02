@@ -8,7 +8,6 @@ import logging
 
 from poster.base_poster import BasePoster
 from santander import SantanderTransaction, from_gc
-from poster.beancount_sync import SimpleLedgerTransaction
 from storage import SANTANDER_TX_FILE
 
 
