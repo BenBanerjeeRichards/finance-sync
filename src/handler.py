@@ -5,15 +5,14 @@ from functools import wraps
 from pydantic import BaseModel
 import logging
 
-from poster.beancount_sync import SimpleLedgerTransaction, BeancountSync
-from poster.monzo_translater import MonzoTranslater
-from poster.santander_translater import SantanderTranslater
-from container import Container
+import dependencies
+from poster.beancount_sync import SimpleLedgerTransaction
+from poster.monzo_poster import MonzoPoster
+from poster.santander_poster import SantanderPoster
 from importer.import_service import ImportService
 from importer.monzo_import import MonzoImporter
-from model import Transaction, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions
-from santander import from_gc
-from storage import SANTANDER_TX_FILE, MONZO_TX_FILE, Store
+from model import  MonzoSyncMessage, TransactionUpdate
+from storage import Store
 
 
 def rmq_handler(body_type: type[BaseModel] | None = None):
@@ -57,52 +56,52 @@ class Handler:
     Main entry point for all tasks triggered from RMQ
     """
 
-    def __init__(self, container: Container):
-        self.container = container
-        self.monzo_importer = MonzoImporter(container.config, container.monzo_client, container.minio_client)
-        self.store = Store(container.minio_client)
-        self.beancount_sync = BeancountSync(container.config)
+    def __init__(self):
+        self.monzo_importer = MonzoImporter(dependencies.get_config(), dependencies.get_monzo_client(), dependencies.get_minio_client())
+        self.store = Store(dependencies.get_minio_client())
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
         sync_since = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=sync_message.past_days)
         self.monzo_importer.import_transactions(sync_since)
-        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
+        sync_monzo_ledger()
 
     @rmq_handler(TransactionUpdate)
     def on_monzo_update_notes(self, updates: list[TransactionUpdate]):
         self.monzo_importer.update_notes(updates)
-        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
+        sync_monzo_ledger()
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
         from importer.import_service import ImportService
 
         logging.info("Refreshing monzo token")
-        access, refresh = self.container.monzo_client.get_access_token()
-        ImportService.update_monzo_tokens(self.container.settings.monzo_client_id, access, refresh)
+        access, refresh = dependencies.get_monzo_client().get_access_token()
+        ImportService.update_monzo_tokens(dependencies.get_settings().settings.monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
-        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
-        sync_santander_ledger(self.container.config, self.store, self.beancount_sync)
+        sync_monzo_ledger()
+        sync_santander_ledger()
 
     @rmq_handler()
     def on_santander_sync_transactions(self):
-        self.container.santander_importer.import_transactions()
-        age_days = self.container.santander_importer.update_expires_dates()
-        if age_days >= self.container.config.gocardless.notifyOlderThan:
-            self.container.notifier.notify_expiring("GoCardless", self.container.config.gocardless.startUri, 90 - age_days)
-        sync_santander_ledger(self.container.config, self.store, self.beancount_sync)
+        config = dependencies.get_config()
+        santander_importer = dependencies.get_santander_importer()
+        santander_importer.import_transactions()
+        age_days = santander_importer.update_expires_dates()
+        if age_days >= config.config.gocardless.notifyOlderThan:
+            dependencies.get_notifier().notify_expiring("GoCardless", config.gocardless.startUri, 90 - age_days)
+        sync_santander_ledger()
 
     @rmq_handler(SimpleLedgerTransaction)
     def notify_new_transaction(self, tx: SimpleLedgerTransaction):
-        if tx.credit_account == self.container.config.santanderCashAccount or tx.debit_account == self.container.config.santanderCashAccount:
-            self.container.notifier.send_santander_discord_notification(self.container.config.santanderCashAccount, tx)
+        config = dependencies.get_config()
+        if tx.credit_account == config.santanderCashAccount or tx.debit_account == config.santanderCashAccount:
+            dependencies.get_notifier().send_santander_discord_notification(config.santanderCashAccount, tx)
 
 
-def sync_santander_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
-    santander_transactions = store.load(SANTANDER_TX_FILE, SantanderTransactions).transactions
+def sync_santander_ledger():
     santander_configs = [c for c in ImportService.get_gc_configs() if c.kind == "santander"]
     if len(santander_configs) != 1:
         logging.error("Expected exactly one santader config, got %s", len(santander_configs))
@@ -112,18 +111,9 @@ def sync_santander_ledger(config: Config, store: Store, beancount_sync: Beancoun
         logging.error("Santander config not yet configured, skipping...")
         return
 
-    translater = SantanderTranslater(santander_config)
-    mapped_transactions = [translater.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
-    ledger_transactions = [tx for tx in mapped_transactions if tx]
-    beancount_sync.sync()
+    SantanderPoster(santander_config).run()
 
-    from ledger.ledger_service import LedgerService
-
-    logging.info("writing santander to db")
-    ledger = LedgerService(config)
-    ledger.create_or_update_transactions("santander.bean", ledger_transactions)
-
-def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSync):
+def sync_monzo_ledger():
     from importer.import_service import ImportService
     monzo_configs = ImportService.get_monzo_configs()
     if len(monzo_configs) != 1:
@@ -134,14 +124,4 @@ def sync_monzo_ledger(config: Config, store: Store, beancount_sync: BeancountSyn
         logging.error("Monzo config not yet configured, skipping...")
         return
 
-    monzo_transactions = store.load_list(MONZO_TX_FILE, Transaction)
-    translater = MonzoTranslater(monzo_config)
-    # We limit start from FY25 as that is only as far back as I have Santander and can be bothered to do the manual postings for
-    ledger_transactions = [translater.translate_to_ledger(tx) for tx in monzo_transactions if tx.created > "2024-04"]
-    from ledger.ledger_service import LedgerService
-
-    ledger = LedgerService(config)
-    logging.info("writing monzo to db (%s)", len(ledger_transactions))
-    ledger.create_or_update_transactions("monzo.bean", ledger_transactions)
-
-    beancount_sync.sync()
+    MonzoPoster(monzo_config).run()

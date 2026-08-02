@@ -4,8 +4,8 @@ from beancount.loader import load_string
 from pika.adapters.blocking_connection import BlockingChannel
 
 from poster.beancount_sync import SimpleLedgerTransaction
-from poster.monzo_translater import MonzoTranslater
-from poster.santander_translater import SantanderTranslater
+from poster.monzo_poster import MonzoPoster
+from poster.santander_poster import SantanderPoster
 from model import Config, SantanderTransactions, Transaction
 from santander import from_gc
 from storage import Store, SANTANDER_TX_FILE, MONZO_TX_FILE
@@ -15,7 +15,7 @@ import hashlib
 
 def backfill_monzo(config: Config, ch: BlockingChannel, minio_client: minio.Minio, routing_key: str, in_only=False):
     monzo_transactions = Store(minio_client, "transactions").load_list(MONZO_TX_FILE, Transaction)
-    translater = MonzoTranslater(config)
+    translater = MonzoPoster(config)
     ledger_transactions = [translater.translate_to_ledger(tx) for tx in monzo_transactions if tx.created > "2024-04"]
     if in_only:
         ledger_transactions = [tx for tx in ledger_transactions if tx.debit_account == "Assets:Cash:Monzo"]
@@ -25,7 +25,7 @@ def backfill_monzo(config: Config, ch: BlockingChannel, minio_client: minio.Mini
 def backfill_santander_gc(config: Config, ch: BlockingChannel, minio_client: minio.Minio, routing_key: str) -> None:
     santander_transactions = Store(minio_client, "transactions").load(SANTANDER_TX_FILE,
                                                                       SantanderTransactions).transactions
-    translater = SantanderTranslater(config)
+    translater = SantanderPoster(config)
     logging.info("Backfilling %s santander transactions", len(santander_transactions))
     ledger_transactions = [translater.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
     backfill_transactions(ch, routing_key, [tx for tx in ledger_transactions if tx])

@@ -1,19 +1,29 @@
 from operator import abs
 
+import dependencies
 from importer.import_service import GcImportIntegrationDto, ImportService, GcImportRuleDto
 from model import *
 
 import logging
 
-from santander import SantanderTransaction
+from poster.base_poster import BasePoster
+from santander import SantanderTransaction, from_gc
 from poster.beancount_sync import SimpleLedgerTransaction
+from storage import SANTANDER_TX_FILE
 
 
-class SantanderTranslater:
+class SantanderPoster(BasePoster):
 
     def __init__(self, config: GcImportIntegrationDto):
         self.import_config = config
         self.import_rules = ImportService.get_gc_import_rules(config.id)
+
+    def run(self):
+        santander_transactions = dependencies.get_transactions_store().load(SANTANDER_TX_FILE, SantanderTransactions).transactions
+        mapped_transactions = [self.translate_to_beancount(from_gc(tx)) for tx in santander_transactions]
+        ledger_transactions = [tx for tx in mapped_transactions if tx]
+        logging.info("writing santander to db")
+        dependencies.get_ledger_service().create_or_update_transactions("santander.bean", ledger_transactions)
 
     def translate_to_beancount(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
         cash_account = self.import_config.cash_account_id
@@ -64,7 +74,7 @@ class SantanderTranslater:
 
     def _get_santander_account(self, tx: SantanderTransaction) -> GcImportRuleDto | None:
         for rule in self.import_rules:
-            if SantanderTranslater._santander_rule_matches(rule, tx):
+            if SantanderPoster._santander_rule_matches(rule, tx):
                 return rule
         return None
 

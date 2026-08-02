@@ -10,6 +10,7 @@ from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
+import dependencies
 from gocardless.gc_connection import GcConnection
 from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
 from ledger.ledger_service import LedgerService
@@ -173,14 +174,13 @@ def create_fastapi(monzo_client: MonzoClient, rmq_connection_string: str,
         # creates and updates rules, never deletes - use the delete endpoint for that
         # priority is determined by list order, first item is highest priority
         kind = ImportService.get_import_rule_type(import_id)
-
         try:
             if kind == "monzo":
                 logging.info("updating monzo rules %s", import_id)
                 update = MonzoImportRuleUpdateRequest(**update)
                 rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
                 ImportService.upsert_monzo_import_rules(import_id, rules)
-                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in ImportService.get_monzo_import_rules(import_id)]
+                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in dependencies.get_import_service().get_monzo_import_rules(import_id)]
             else:
                 logging.info("updating gc monzo rules %s", import_id)
                 update = GcImportRuleUpdateRequest(**update)

@@ -1,27 +1,38 @@
 import logging
 
+import dependencies
+from poster.base_poster import BasePoster
 from poster.beancount_sync import SimpleLedgerTransaction
 from model import *
 from model import Transaction as MonzoTransaction
+from storage import MONZO_TX_FILE
+
 
 def create_amount(pence: int) -> Decimal:
     return Decimal(pence) / Decimal("100")
 
 
-class MonzoTranslater:
+class MonzoPoster(BasePoster):
     from importer.import_service import  MonzoImportRuleDto, MonzoImportIntegrationDto
 
     """
     Translates monzo translations to Beancount ledger postings
     Uses the rules in the provided config to determine the account
-    Most just get the accounts from the monzo categories: e.g. Groceries -> Expenses::Groceries
     """
 
     def __init__(self, import_config: MonzoImportIntegrationDto) -> None:
-        from importer.import_service import ImportService
-
         self.import_config = import_config
-        self.import_rules = ImportService.get_monzo_import_rules(import_config.id)
+        self.import_rules = dependencies.get_import_service().get_monzo_import_rules(import_config.id)
+
+    def run(self):
+        monzo_transactions = dependencies.get_transactions_store().load_list(MONZO_TX_FILE, Transaction)
+        ledger_transactions = [self.translate_to_ledger(tx) for tx in monzo_transactions if
+                               tx.created > "2024-04"]
+        from ledger.ledger_service import LedgerService
+
+        ledger = LedgerService(dependencies.get_config())
+        logging.info("writing monzo to db (%s)", len(ledger_transactions))
+        ledger.create_or_update_transactions("monzo.bean", ledger_transactions)
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.import_config.cash_account_id

@@ -295,8 +295,7 @@ class ImportService:
             return kind, ImportService.get_gc_config_by_id(import_id)
         raise ValueError(f"No import configuration found for id {import_id}")
 
-    @staticmethod
-    def get_monzo_import_rules(import_integration_id: uuid.UUID) -> list[MonzoImportRuleDto]:
+    def get_monzo_import_rules(self, import_integration_id: uuid.UUID) -> list[MonzoImportRuleDto]:
         with Session.begin() as session:
             q = select(MonzoImportRule).where(
                 MonzoImportRule.import_integration_id == import_integration_id

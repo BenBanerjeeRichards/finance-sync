@@ -10,7 +10,7 @@ from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_
 from model import Settings
 import os
 import logging
-import container
+import dependencies
 
 import multiprocessing
 
@@ -97,24 +97,23 @@ def listen_for_updates(pika_connection: BlockingConnection, handler: "Handler"):
 def main():
     # settings = env variables (mostly secrets)
     # config = non-secret config from yaml file
-    settings = load_settings()
+    settings = dependencies.get_settings()
     config = Config(**yaml.safe_load(open(settings.config_path)))
-    containers = container.Container(config, settings)
 
     from web.web import create_fastapi
 
     def start_pika():
         from handler import Handler
 
-        message_handler = Handler(containers)
-        listen_for_updates(containers.pika_connection, message_handler)
+        message_handler = Handler()
+        listen_for_updates(dependencies.get_rabbitmq_connection(), message_handler)
 
     def start_gc_sync():
         async def start_async():
             config = uvicorn.Config(
-                create_fastapi(containers.monzo_client, settings.rabbitmq_connection_string,
-                               containers.gc_connection,
-                               containers.ledger_service),
+                create_fastapi(dependencies.get_monzo_client(), settings.rabbitmq_connection_string,
+                               dependencies.get_gc_connection(),
+                               dependencies.get_ledger_service()),
                 host="0.0.0.0", port=8080, log_level="info")
             server = uvicorn.Server(config)
             await server.serve()
