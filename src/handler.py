@@ -2,23 +2,18 @@ import datetime
 import json
 from functools import wraps
 
-from minio import Minio
 from pydantic import BaseModel
 import logging
 
 from beancount_sync.beancount_sync import SimpleLedgerTransaction, BeancountSync
 from beancount_sync.monzo_translater import MonzoTranslater
 from beancount_sync.santander_translater import SantanderTranslater
+from container import Container
 from importer.import_service import ImportService
 from importer.monzo_import import MonzoImporter
-from importer.santander_import import SantanderImporter
-from model import Transaction, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions, Settings
-from monzo import MonzoClient
-from notification.notifier import Notifier
+from model import Transaction, Config, MonzoSyncMessage, TransactionUpdate, SantanderTransactions
 from santander import from_gc
 from storage import SANTANDER_TX_FILE, MONZO_TX_FILE, Store
-from notification.discord import DiscordClient
-from pika.adapters.blocking_connection import BlockingConnection
 
 
 def rmq_handler(body_type: type[BaseModel] | None = None):
@@ -62,56 +57,48 @@ class Handler:
     Main entry point for all tasks triggered from RMQ
     """
 
-    def __init__(self, config: Config,settings: Settings, minio_client: Minio, discord_client: DiscordClient, monzo_client: MonzoClient,
-                 santander_import: SantanderImporter, pika_connection: BlockingConnection, notifier: Notifier):
-        self.config = config
-        self.settings = settings
-        self.minio_client = minio_client
-        self.discord_client = discord_client
-        self.monzo_client = monzo_client
-        self.santander_import = santander_import
-        self.pika_connection = pika_connection
-        self.monzo_importer = MonzoImporter(config, monzo_client, self.minio_client)
-        self.notifier = notifier
-        self.store = Store(self.minio_client)
-        self.beancount_sync = BeancountSync(config)
+    def __init__(self, container: Container):
+        self.container = container
+        self.monzo_importer = MonzoImporter(container.config, container.monzo_client, container.minio_client)
+        self.store = Store(container.minio_client)
+        self.beancount_sync = BeancountSync(container.config)
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
         sync_since = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(days=sync_message.past_days)
         self.monzo_importer.import_transactions(sync_since)
-        sync_monzo_ledger(self.config, self.store, self.beancount_sync)
+        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
 
     @rmq_handler(TransactionUpdate)
     def on_monzo_update_notes(self, updates: list[TransactionUpdate]):
         self.monzo_importer.update_notes(updates)
-        sync_monzo_ledger(self.config, self.store, self.beancount_sync)
+        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
         from importer.import_service import ImportService
 
         logging.info("Refreshing monzo token")
-        access, refresh = self.monzo_client.get_access_token()
-        ImportService.update_monzo_tokens(self.settings.monzo_client_id, access, refresh)
+        access, refresh = self.container.monzo_client.get_access_token()
+        ImportService.update_monzo_tokens(self.container.settings.monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
-        sync_monzo_ledger(self.config, self.store, self.beancount_sync)
-        sync_santander_ledger(self.config, self.store, self.beancount_sync)
+        sync_monzo_ledger(self.container.config, self.store, self.beancount_sync)
+        sync_santander_ledger(self.container.config, self.store, self.beancount_sync)
 
     @rmq_handler()
     def on_santander_sync_transactions(self):
-        self.santander_import.import_transactions()
-        age_days = self.santander_import.update_expires_dates()
-        if age_days >= self.config.gocardless.notifyOlderThan:
-            self.notifier.notify_expiring("GoCardless", self.config.gocardless.startUri, 90 - age_days)
-        sync_santander_ledger(self.config, self.store, self.beancount_sync)
+        self.container.santander_importer.import_transactions()
+        age_days = self.container.santander_importer.update_expires_dates()
+        if age_days >= self.container.config.gocardless.notifyOlderThan:
+            self.container.notifier.notify_expiring("GoCardless", self.container.config.gocardless.startUri, 90 - age_days)
+        sync_santander_ledger(self.container.config, self.store, self.beancount_sync)
 
     @rmq_handler(SimpleLedgerTransaction)
     def notify_new_transaction(self, tx: SimpleLedgerTransaction):
-        if tx.credit_account == self.config.santanderCashAccount or tx.debit_account == self.config.santanderCashAccount:
-            self.notifier.send_santander_discord_notification(self.config.santanderCashAccount, tx)
+        if tx.credit_account == self.container.config.santanderCashAccount or tx.debit_account == self.container.config.santanderCashAccount:
+            self.container.notifier.send_santander_discord_notification(self.container.config.santanderCashAccount, tx)
 
 
 def sync_santander_ledger(config: Config, store: Store, beancount_sync: BeancountSync):

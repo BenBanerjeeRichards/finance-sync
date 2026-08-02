@@ -42,28 +42,30 @@ class EnergySync:
         self.config = config
 
         # TODO support configuring this in the frontend
-        with Session.begin() as session:
-            self.electric_prepay_account = LedgerService.get_account_by_full_name(session,
-                                                                                  self.config.energy.electricityPrepayAccount).id
-            self.electric_expense_account = LedgerService.get_account_by_full_name(session,
-                                                                                   self.config.energy.electricityExpenseAccount).id
-            self.gas_prepay_account = LedgerService.get_account_by_full_name(session, self.config.energy.gasPrepayAccount).id
-            self.gas_expense_account = LedgerService.get_account_by_full_name(session,
-                                                                              self.config.energy.gasExpenseAccount).id
 
     def run_energy_sync(self):
         if not self.config.energy:
             logging.info("Energy Sync not configured, skipping")
             return
 
-        energy_client = EnergyClient(self.config.energy.energySyncBaseUrl)
-        try:
-            self._create_energy_transactions(energy_client, "electricity", self.electric_prepay_account,
-                                             self.electric_expense_account)
-            self._create_energy_transactions(energy_client, "gas", self.gas_prepay_account,
-                                             self.gas_expense_account)
-        except Exception as e:
-            logging.exception("failed to sync energy")
+        with Session.begin() as session:
+            electric_prepay_account = LedgerService.get_account_by_full_name(session,
+                                                                             self.config.energy.electricityPrepayAccount).id
+            electric_expense_account = LedgerService.get_account_by_full_name(session,
+                                                                              self.config.energy.electricityExpenseAccount).id
+            gas_prepay_account = LedgerService.get_account_by_full_name(session,
+                                                                        self.config.energy.gasPrepayAccount).id
+            gas_expense_account = LedgerService.get_account_by_full_name(session,
+                                                                         self.config.energy.gasExpenseAccount).id
+
+            energy_client = EnergyClient(self.config.energy.energySyncBaseUrl)
+            try:
+                self._create_energy_transactions(energy_client, "electricity", electric_prepay_account,
+                                                 electric_expense_account)
+                self._create_energy_transactions(energy_client, "gas", gas_prepay_account,
+                                                 gas_expense_account)
+            except Exception as e:
+                logging.exception("failed to sync energy")
 
     def _create_energy_transactions(self, client: EnergyClient, meter_type: Literal["gas", "electricity"],
                                     asset_account: uuid.UUID, expense_account: uuid.UUID):
@@ -74,14 +76,14 @@ class EnergySync:
             reading_date = datetime.datetime.strptime(month, "%Y-%m").date()
             amount = Decimal(reading_amount) / Decimal("100")
             transactions.append(SimpleLedgerTransaction(external_id=external_id,
-                                         tx_date=reading_date,
-                                         credit_account_id=asset_account,
-                                         debit_account_id=expense_account,
-                                         payee=f"Energy consumption ({meter_type})",
-                                         description="",
-                                         flagged=False,
-                                         ledger_metadata={},
-                                         source="energy",
-                                         amount=amount,
-                                         metadata={}))
+                                                        tx_date=reading_date,
+                                                        credit_account_id=asset_account,
+                                                        debit_account_id=expense_account,
+                                                        payee=f"Energy consumption ({meter_type})",
+                                                        description="",
+                                                        flagged=False,
+                                                        ledger_metadata={},
+                                                        source="energy",
+                                                        amount=amount,
+                                                        metadata={}))
         LedgerService(self.config).create_or_update_transactions(self.config.accrualBeanFileName, transactions)

@@ -126,3 +126,6 @@ class MonzoClient:
 
     def get_start_ouath_url(self) -> str:
         return f"https://auth.monzo.com/?client_id={self.client_id}&response_type=code&state=state&redirect_uri={REDIRECT_URL}"
+
+    def _get_tokens(self):
+        pass
