@@ -101,39 +101,6 @@ class SantanderTransactions(BaseModel):
     transactions: list[GcSantanderTransaction]
 
 
-class MonzoAccountRule(BaseModel):
-    name: str
-    account: str
-    tags: list[str] | None = None
-    potId: str | None = None
-    accountNumber: str | None = None
-    narrative: str | None = None
-    groupId: str | None = None
-    merchantGroupId: str | None = None
-    counterpartyName: str | None = None
-    createdGt: datetime.datetime | None = None
-    metadata: dict[str, str] = {}
-    payee: str | None = None
-
-    model_config = {"extra": "forbid"}
-
-
-class SantanderAccountRule(BaseModel):
-    name: str
-    accountName: str
-    accountMatches: list[str] | None = None
-    referenceMatches: list[str] | None = None
-    creditOnly: bool | None = None
-    debitOnly: bool | None = None
-    type: str | None = None
-    ignore: bool | None = None
-    amount: float | None = None
-    metadata: dict[str, str] = {}
-    payee: str | None = None
-
-    model_config = {"extra": "forbid"}
-
-
 class GoCardlessConfig(BaseModel):
     insitutionId: str
     redirectUri: str
@@ -150,17 +117,16 @@ class AccrualConfig(BaseModel):
     name: str
     metadata_key: str   # metadata key that identifies transactions for this
     settlement_months: int  # how many months does a settlement cover. e.g. quarterly bill = 3
-    liability_account: str
-    expense_account: str
+    liability_account: uuid.UUID
+    expense_account: uuid.UUID
 
     model_config = {"extra": "forbid"}
 
 class EnergyConfig(BaseModel):
-    energySyncBaseUrl: str
-    electricityPrepayAccount: str
-    gasPrepayAccount: str
-    electricityExpenseAccount: str
-    gasExpenseAccount: str
+    electricityPrepayAccount: uuid.UUID
+    gasPrepayAccount: uuid.UUID
+    electricityExpenseAccount: uuid.UUID
+    gasExpenseAccount: uuid.UUID
     startMonth: str
 
     @field_validator("startMonth")
@@ -175,24 +141,10 @@ class EnergyConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 class Config(BaseModel):
-    monzoCategoryMappings: dict[str, str]
-    accountRules: list[MonzoAccountRule]
-    monzoCashAccount: str
-    santanderCashAccount: str
-    startDate: str  # keep as raw string
-    defaultIncomeAccount: str
-    defaultExpenseAccount: str
-    santanderAccountRules: list[SantanderAccountRule]
-    bucket: str
-    monzoTransactionName: str
-    beanFileName: str
-    santanderBeanFileName: str
     accrualBeanFileName: str
     gocardless: GoCardlessConfig
     monzoCustomCategories: dict[str, str] = {}
-    accruals: list[AccrualConfig] = []
-    mainLedgerFile: str
-    energy: EnergyConfig | None = None
+    energySyncBaseUrl: str
 
     model_config = {"extra": "forbid"}
 

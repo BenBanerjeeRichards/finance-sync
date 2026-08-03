@@ -8,8 +8,9 @@ from pydantic import BaseModel
 import logging
 
 import dependencies
-from model import SimpleLedgerTransaction
+from model import SimpleLedgerTransaction, EnergyConfig
 from poster.base_poster import BasePoster
+from poster.poster_config_service import PosterConfigService
 from ledger.ledger_service import LedgerService
 from main import Session
 import uuid
@@ -39,38 +40,25 @@ class EnergyClient:
 # Tracks energy usage by crediting prepay asset with monthly usage
 class EnergyConsumptionPoster(BasePoster):
 
-    def __init__(self):
+    def __init__(self, energy_config: EnergyConfig):
         self.config = dependencies.get_config()
-
-        # TODO support configuring this in the frontend
+        self.energy_config = energy_config
 
     def run(self):
-        if not self.config.energy:
+        if not self.energy_config:
             logging.info("Energy Sync not configured, skipping")
             return
 
-        with Session.begin() as session:
-            electric_prepay_account = LedgerService.get_account_by_full_name(session,
-                                                                             self.config.energy.electricityPrepayAccount).id
-            electric_expense_account = LedgerService.get_account_by_full_name(session,
-                                                                              self.config.energy.electricityExpenseAccount).id
-            gas_prepay_account = LedgerService.get_account_by_full_name(session,
-                                                                        self.config.energy.gasPrepayAccount).id
-            gas_expense_account = LedgerService.get_account_by_full_name(session,
-                                                                         self.config.energy.gasExpenseAccount).id
-
-            energy_client = EnergyClient(self.config.energy.energySyncBaseUrl)
-            try:
-                self._create_energy_transactions(energy_client, "electricity", electric_prepay_account,
-                                                 electric_expense_account)
-                self._create_energy_transactions(energy_client, "gas", gas_prepay_account,
-                                                 gas_expense_account)
-            except Exception as e:
-                logging.exception("failed to sync energy")
+        energy_client = EnergyClient(self.config.energySyncBaseUrl)
+        self._create_energy_transactions(energy_client, "electricity",
+                                         self.energy_config.electricityPrepayAccount,
+                                         self.energy_config.electricityExpenseAccount)
+        self._create_energy_transactions(energy_client, "gas", self.energy_config.gasPrepayAccount,
+                                         self.energy_config.gasExpenseAccount)
 
     def _create_energy_transactions(self, client: EnergyClient, meter_type: Literal["gas", "electricity"],
                                     asset_account: uuid.UUID, expense_account: uuid.UUID):
-        readings = client.get_monthly_readings(self.config.energy.startMonth, meter_type)
+        readings = client.get_monthly_readings(self.energy_config.startMonth, meter_type)
         transactions = []
         for month, reading_amount in readings.items():
             external_id = f"energy_{meter_type}_{month}"  # idempotency key, one reading we update per month

@@ -7,6 +7,7 @@ from poster.accrual_poster import AccrualsPoster
 from poster.base_poster import BasePoster
 from poster.energy_sync import EnergyConsumptionPoster
 from poster.monzo_poster import MonzoPoster
+from poster.poster_config_service import PosterConfigService
 from poster.santander_poster import SantanderPoster
 
 
@@ -36,12 +37,18 @@ def _get_santander_config() -> GcImportIntegrationDto | None:
 def run_posters() -> None:
     monzo_config = _get_monzo_config()
     santander_config = _get_santander_config()
+    energy_config =  PosterConfigService.get_energy_config()
+    accrual_rules = PosterConfigService.get_accrual_configs()
+
     posters: list[BasePoster] = []
     if monzo_config is not None:
         posters.append(MonzoPoster(monzo_config))
     if santander_config is not None:
         posters.append(SantanderPoster(santander_config))
-    posters += [AccrualsPoster(), EnergyConsumptionPoster()]
+    for rule in accrual_rules:
+        posters += [AccrualsPoster(rule)]
+    if energy_config is not None:
+        posters.append(EnergyConsumptionPoster(energy_config))
 
     for poster in posters:
         start = time.time()

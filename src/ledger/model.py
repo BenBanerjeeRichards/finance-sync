@@ -210,6 +210,29 @@ class GoCardlessImportIntegration(Base):
     default_expense_account_id: Mapped[uuid.UUID | None] = mapped_column()
 
 
+class PosterConfig(Base):
+    """Generic storage for poster configuration (energy, accrual, mortgage, ...).
+
+    One row per poster instance. `type` selects which Pydantic model validates `config`.
+    Some types (e.g. energy) only ever have a single row - enforced by a partial unique
+    index on `type` (see migration), rather than a separate table per type.
+    """
+
+    __tablename__ = "poster_config"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+    type: Mapped[str] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column()
+    enabled: Mapped[bool] = mapped_column(default=True)
+    config: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("type", "name", name="uq_poster_config_type_name"),
+    )
+
+
 class GoCardlessImportRule(Base):
     __tablename__ = "gocardless_import_rule"
 

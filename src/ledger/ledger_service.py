@@ -53,13 +53,6 @@ class LedgerService:
             return LedgerRepo.get_accounts(session)
 
     @staticmethod
-    def get_account_by_full_name(session: "Session", name: str) -> AccountDto:
-        res = LedgerRepo.get_account_by_full_name(session, name)
-        if not res:
-            raise ValueError(f"Account {name} not found")
-        return res
-
-    @staticmethod
     def get_tags() -> list[str]:
         with Session.begin() as session:
             return LedgerRepo.get_tags(session)

@@ -46,6 +46,29 @@ class GetPayeeParams(BaseModel):
     filter: str | None = None
 
 
+class PosterConfigResponse(BaseModel):
+    id: UUID
+    type: str
+    name: str
+    enabled: bool
+    config: dict
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class PosterConfigCreateRequest(BaseModel):
+    type: str
+    name: str
+    config: dict
+    enabled: bool = True
+
+
+class PosterConfigUpdateRequest(BaseModel):
+    name: str | None = None
+    config: dict | None = None
+    enabled: bool | None = None
+
+
 class MonzoImportConfigResponse(BaseModel):
     id: UUID
     client_id: str

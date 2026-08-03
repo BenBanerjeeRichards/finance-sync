@@ -92,6 +92,5 @@ class Handler:
 
     @rmq_handler(SimpleLedgerTransaction)
     def notify_new_transaction(self, tx: SimpleLedgerTransaction):
-        config = dependencies.get_config()
-        if tx.credit_account == config.santanderCashAccount or tx.debit_account == config.santanderCashAccount:
-            dependencies.get_notifier().send_santander_discord_notification(config.santanderCashAccount, tx)
+        # TODO implement this again!
+        pass

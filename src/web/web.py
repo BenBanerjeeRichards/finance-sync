@@ -12,9 +12,15 @@ from starlette.templating import Jinja2Templates
 
 import dependencies
 from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
-from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
 from model import MonzoSyncMessage
+from poster.poster_config_service import (
+    PosterConfigService,
+    DuplicatePosterConfigError,
+    InvalidPosterConfigError,
+    PosterConfigNotFoundError,
+    UnknownPosterTypeError,
+)
 from web.model import *
 import logging
 
@@ -195,6 +201,52 @@ def create_fastapi() -> FastAPI:
     @app.delete("/finance/import_configuration/{import_id}/rule/{rule_id}")
     async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
         ImportService.delete_import_rule(import_id, rule_id)
+
+
+    @app.get("/finance/poster_config")
+    async def list_poster_configs(type: str | None = None):
+        configs = PosterConfigService.list_configs(type)
+        return {
+            "poster_configs": [PosterConfigResponse(**c.model_dump()) for c in configs]
+        }
+
+    @app.get("/finance/poster_config/{config_id}")
+    async def get_poster_config(config_id: uuid.UUID):
+        try:
+            config = PosterConfigService.get_config(config_id)
+        except PosterConfigNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return PosterConfigResponse(**config.model_dump())
+
+    @app.post("/finance/poster_config")
+    async def create_poster_config(create: PosterConfigCreateRequest):
+        try:
+            config = PosterConfigService.create_config(
+                create.type, create.name, create.config, create.enabled)
+        except UnknownPosterTypeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except InvalidPosterConfigError as e:
+            raise HTTPException(status_code=422, detail=e.errors)
+        except DuplicatePosterConfigError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return PosterConfigResponse(**config.model_dump())
+
+    @app.put("/finance/poster_config/{config_id}")
+    async def update_poster_config(config_id: uuid.UUID, update: PosterConfigUpdateRequest):
+        try:
+            config = PosterConfigService.update_config(
+                config_id, update.name, update.config, update.enabled)
+        except PosterConfigNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except InvalidPosterConfigError as e:
+            raise HTTPException(status_code=422, detail=e.errors)
+        except DuplicatePosterConfigError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return PosterConfigResponse(**config.model_dump())
+
+    @app.delete("/finance/poster_config/{config_id}")
+    async def delete_poster_config(config_id: uuid.UUID):
+        PosterConfigService.delete_config(config_id)
 
 
     return app

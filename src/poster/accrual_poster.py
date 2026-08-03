@@ -43,14 +43,14 @@ class AccrualsPoster(BasePoster):
            these are replaced with the actual liabilities
     """
 
-    def __init__(self):
+    def __init__(self, accrual_config: AccrualConfig):
         self.config = dependencies.get_config()
-        self.ledger_service = LedgerService(self.config)
+        self.ledger_service = dependencies.get_ledger_service()
+        self.accrual_config = accrual_config
 
     def run(self):
         with Session.begin() as session:
-            for rule in self.config.accruals:
-                self.process_accrual(session, rule)
+            self.process_accrual(session, self.accrual_config)
 
     def process_accrual(self, session: "Session", rule: AccrualConfig):
         logging.info("Calculating accruals for rule %s", rule.metadata_key)
@@ -72,10 +72,8 @@ class AccrualsPoster(BasePoster):
 
             for i, liability_date in enumerate(liability_months):
                 liability_key = f"{settlement.key}-{liability_date.isoformat()}"
-                credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
-                expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
                 tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
-                                             credit_account_id=credit_account_id, debit_account_id=expense_account_id,
+                                             credit_account_id=rule.liability_account, debit_account_id=rule.expense_account,
                                              payee=settlement.payee or "",
                                              description=f"{rule.name} - incurred liability",
                                              flagged=False,
@@ -115,12 +113,9 @@ class AccrualsPoster(BasePoster):
         logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name,
                      provisional_liability_months, estimated_liability)
         for i, liability_date in enumerate(provisional_liability_months):
-            credit_account_id = LedgerService.get_account_by_full_name(session, rule.liability_account).id
-            expense_account_id = LedgerService.get_account_by_full_name(session, rule.expense_account).id
-
             liability_key = f"provisional-{most_recent_settlement.key}-{liability_date.isoformat()}"
             tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
-                                         credit_account_id=credit_account_id, debit_account_id=expense_account_id,
+                                         credit_account_id=rule.liability_account, debit_account_id=rule.expense_account,
                                          payee=most_recent_settlement.payee or "",
                                          description=f"{rule.name} - provisional liability",
                                          flagged=False,
