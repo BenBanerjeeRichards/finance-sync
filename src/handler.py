@@ -74,7 +74,7 @@ class Handler:
 
         logging.info("Refreshing monzo token")
         access, refresh = dependencies.get_monzo_client().get_access_token()
-        ImportService.update_monzo_tokens(dependencies.get_settings().settings.monzo_client_id, access, refresh)
+        ImportService.update_monzo_tokens(dependencies.get_settings().monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
