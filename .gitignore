@@ -3,7 +3,6 @@ monzo-transactions.json
 samples
 config.yml
 Makefile
-*.md
 .idea
 
 __pycache__

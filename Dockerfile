@@ -1,32 +1,24 @@
-FROM python:3.13-alpine as base
+FROM python:3.13-alpine AS base
 
-FROM base as builder
-
-RUN apk add --no-cache \
-    build-base \
-    clang \
-    lld \
-    python3-dev \
-    bison \
-    flex
-
-RUN python -m venv /venv
-ENV PATH="/venv/bin:$PATH"
-
-WORKDIR /install
-COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir -r /requirements.txt
-
-FROM base
-COPY --from=builder /venv /venv
-
-ENV PATH="/venv/bin:$PATH"
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY src /app/src
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_PYTHON_PREFERENCE=only-system
 
+COPY pyproject.toml uv.lock /app/
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-dev
+
+COPY src /app/src
 COPY alembic.ini /app/alembic.ini
 COPY alembic /app/alembic
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 CMD ["python", "src/main.py"]
