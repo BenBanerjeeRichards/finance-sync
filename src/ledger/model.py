@@ -22,23 +22,6 @@ class AccountType(str, PythonEnum):
     EQUITY = "equity"
     INCOME = "income"
 
-
-class Ledger(Base):
-    """Allows separating transactions (e.g., for financial years or Beancount files)."""
-
-    __tablename__ = "ledger"
-
-    # Switched to server-generated UUIDv4
-    id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
-    name: Mapped[str] = mapped_column(unique=True)
-
-    # Relationships
-    transactions: Mapped[list["Transaction"]] = relationship(
-        back_populates="ledger",
-        cascade="all, delete-orphan"
-    )
-
-
 class Account(Base):
     """Represents a Beancount-style chart of accounts."""
 
@@ -67,7 +50,6 @@ class Transaction(Base):
     __tablename__ = "transaction"
 
     id: Mapped[UUID] = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
-    ledger_id: Mapped[UUID] = mapped_column(ForeignKey("ledger.id", ondelete="CASCADE"), index=True)
 
     transaction_datetime: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -97,7 +79,6 @@ class Transaction(Base):
     )
 
     # Relationships
-    ledger: Mapped["Ledger"] = relationship(back_populates="transactions")
     entries: Mapped[list["Entry"]] = relationship(
         back_populates="transaction",
         cascade="all, delete-orphan"

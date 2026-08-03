@@ -9,7 +9,7 @@ from sqlalchemy.dialects.postgresql import insert  # need postgres version for o
 from sqlalchemy.orm import Session, defer
 import logging
 
-from ledger.model import Account, Ledger, Transaction, Entry, AccountType
+from ledger.model import Account, Transaction, Entry, AccountType
 from ledger.dto import AccountDto, LedgerDto, BalancesDto, BalanceEntryDto, PeriodicBalancesDto, PeriodicBalanceEntryDto
 import base64
 

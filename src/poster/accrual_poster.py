@@ -78,12 +78,13 @@ class AccrualsPoster(BasePoster):
                                              description=f"{rule.name} - incurred liability",
                                              flagged=False,
                                              ledger_metadata={
-                                                 rule.metadata_key: VALUE_LIABILITY
+                                                 rule.metadata_key: VALUE_LIABILITY,
+                                                 "source": "accrual"
                                              }, source="accrual", amount=abs(liability_amounts[i]),
                                              metadata={})
                 settlement_transactions.append(tx)
 
-        self.ledger_service.create_or_update_transactions(self.config.accrualBeanFileName, settlement_transactions)
+        self.ledger_service.create_or_update_transactions(settlement_transactions)
 
         settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         if not settlements:
@@ -120,7 +121,8 @@ class AccrualsPoster(BasePoster):
                                          description=f"{rule.name} - provisional liability",
                                          flagged=False,
                                          ledger_metadata={
-                                             rule.metadata_key: VALUE_PROVISIONAL_LIABILITY
+                                             rule.metadata_key: VALUE_PROVISIONAL_LIABILITY,
+                                             "source": "accrual"
                                          }, source="accrual", amount=abs(estimated_liability))
             provisional_transactions.append(tx)
 
@@ -132,7 +134,7 @@ class AccrualsPoster(BasePoster):
         if delete_tx_keys:
             logging.warning("%s: deleting transactions: %s", rule.name, delete_tx_keys)
 
-        self.ledger_service.create_or_update_transactions(self.config.accrualBeanFileName, provisional_transactions)
+        self.ledger_service.create_or_update_transactions(provisional_transactions)
         self.ledger_service.delete_transactions_by_key(session, list(delete_tx_keys))
 
 def split_money_decimal(total_amount, n):

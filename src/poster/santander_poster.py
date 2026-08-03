@@ -22,7 +22,7 @@ class SantanderPoster(BasePoster):
         mapped_transactions = [self.translate_to_ledger(from_gc(tx)) for tx in santander_transactions]
         ledger_transactions = [tx for tx in mapped_transactions if tx]
         logging.info("writing santander to db")
-        dependencies.get_ledger_service().create_or_update_transactions("santander.bean", ledger_transactions)
+        dependencies.get_ledger_service().create_or_update_transactions(ledger_transactions)
 
     def translate_to_ledger(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
         cash_account = self.import_config.cash_account_id
@@ -68,7 +68,8 @@ class SantanderPoster(BasePoster):
                                        debit_account_id=debit_account,
                                        payee=payee or "",
                                        description=description or "", flagged=flagged,
-                                       metadata=tx.model_dump(mode="json"), source="santander", ledger_metadata=ledger_metadata,
+                                       metadata=tx.model_dump(mode="json"), source="santander",
+                                       ledger_metadata={"source": "santander", **ledger_metadata},
                                        local_amount=abs(credit_amount), local_currency="GBP")
 
     def _get_santander_account(self, tx: SantanderTransaction) -> GcImportRuleDto | None:

@@ -69,26 +69,24 @@ class LedgerService:
             return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
 
-    def create_or_update_transactions(self, ledger_bean_name: str, bc_transactions: list[SimpleLedgerTransaction]):
+    def create_or_update_transactions(self, ledger_txs: list[SimpleLedgerTransaction]):
         import time as t_time
         start = t_time.time()
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
         with Session.begin() as session:
-            ledger_name_to_id = {l.name: l.id for l in LedgerRepo.get_ledgers(session)}
-            ledger_name = ledger_bean_name.split(".")[0]
             transactions = []
             dt: datetime
 
-            for tx in bc_transactions:
+            for tx in ledger_txs:
                 # fallback to midnight if time not available
                 if not tx.tx_datetime:
                     dt = datetime.combine(tx.tx_date, time.min, tzinfo=ZoneInfo("UTC"))
                 else:
                     dt = tx.tx_datetime
 
-                transaction = Transaction(id=uuid.uuid4(), ledger_id=ledger_name_to_id[ledger_name],
+                transaction = Transaction(id=uuid.uuid4(),
                                           transaction_datetime=dt,
                                           key=tx.external_id, payee=tx.payee, narration=tx.description,
                                           external_metadata=tx.metadata, tx_metadata=tx.ledger_metadata,
@@ -99,7 +97,7 @@ class LedgerService:
             entries = []
             active_legs = []
 
-            for tx in bc_transactions:
+            for tx in ledger_txs:
                 local_amount = tx.local_amount
                 local_currency = tx.local_currency
                 if not local_amount:
@@ -120,7 +118,22 @@ class LedgerService:
             LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
             LedgerRepo.bulk_upsert_entries(session, entries)
         duration = int((t_time.time() - start) * 1000)
-        logging.info("synced transactions to ledger {} in {}ms".format(ledger_name, duration))
+        logging.info("synced transactions in {}ms".format(duration))
+
+    @staticmethod
+    def update_transaction(session, update: SimpleLedgerTransaction) -> None:
+        with Session.begin() as session:
+            existing = LedgerRepo.get_transaction_by_id(session, update.id)
+            if not existing:
+                return
+            source = existing.tx_metadata.get("source")
+            # We limit what we can update depending on the source
+            if source in ["santander", "accrual", "energy"]:
+                return
+            if source == "monzo":
+                pass
+            # LedgerService.create_or_update_transactions(session, todo, [update])
+
 
     @staticmethod
     def find_all_by_metadata_by_date_desc(session, key: str, value: str) -> list[TransactionDto]:

@@ -71,8 +71,8 @@ class EnergyConsumptionPoster(BasePoster):
                                                         payee=f"Energy consumption ({meter_type})",
                                                         description="",
                                                         flagged=False,
-                                                        ledger_metadata={},
+                                                        ledger_metadata={"source": "energy"},
                                                         source="energy",
                                                         amount=amount,
                                                         metadata={}))
-        LedgerService(self.config).create_or_update_transactions(self.config.accrualBeanFileName, transactions)
+        LedgerService(self.config).create_or_update_transactions(transactions)

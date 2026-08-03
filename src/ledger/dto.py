@@ -45,7 +45,6 @@ class TransactionDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    ledger_id: UUID
     transaction_datetime: datetime
     key: str
     payee: str | None = None
@@ -77,7 +76,6 @@ class TransactionListDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    ledger_id: UUID
     transaction_datetime: datetime
     key: str
     payee: str | None = None

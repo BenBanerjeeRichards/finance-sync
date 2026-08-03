@@ -31,7 +31,7 @@ class MonzoPoster(BasePoster):
 
         ledger = LedgerService(dependencies.get_config())
         logging.info("writing monzo to db (%s)", len(ledger_transactions))
-        ledger.create_or_update_transactions("monzo.bean", ledger_transactions)
+        ledger.create_or_update_transactions(ledger_transactions)
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.import_config.cash_account_id
@@ -76,6 +76,7 @@ class MonzoPoster(BasePoster):
             payee = rule.name
 
         description = "" if not tx.notes else tx.notes
+        ledger_metadata = {"source": "monzo", **(rule.metadata if rule else {})}
         return SimpleLedgerTransaction(
             external_id=tx.id,
             tx_date=tx_date,
@@ -88,7 +89,7 @@ class MonzoPoster(BasePoster):
             flagged=flagged,
             metadata=tx.model_dump(),
             source="monzo",
-            ledger_metadata=rule.metadata if rule else {},
+            ledger_metadata=ledger_metadata,
             tags=tx.tags,
             local_amount=create_amount(tx.local_amount),
             local_currency=tx.local_currency
