@@ -3,18 +3,26 @@ import uuid
 from datetime import datetime, time
 from decimal import Decimal
 from typing import Literal
-from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete
 
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
-    PeriodicBalancesDto, EntryDto
-from ledger.model import Account, Transaction, Entry, AccountType
+    PeriodicBalancesDto, CreateTransactionDto
+from ledger.model import Transaction, Entry
 from ledger.repo import LedgerRepo, TransactionFilters, ListTransactionCursor
 from main import Session
 from model import Config, SimpleLedgerTransaction
 import logging
 
+
+class ImmutableTransactionException(Exception):
+    pass
+
+class TransactionNotFoundException(Exception):
+    pass
+
+class TransactionDoesNotBalanceException(Exception):
+    pass
 
 class LedgerService:
 
@@ -72,6 +80,11 @@ class LedgerService:
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
+        for tx in txs:
+            balance = sum([e.amount for e in tx.entries])
+            if balance != Decimal("0"):
+                logging.warning("transaction %s balance is %s", tx.id, balance)
+                raise TransactionDoesNotBalanceException()
         with Session.begin() as session:
             transactions = []
             dt: datetime
@@ -103,31 +116,54 @@ class LedgerService:
         self.create_or_update_transactions(transactions)
 
 
-    @staticmethod
-    def create_or_update_transaction(session, update_dto: TransactionDto) -> None:
+    def update_transaction(self, session, update_dto: TransactionDto) -> TransactionDto:
         """
         Frontend update, so considers source of existing tx to determine how the transaction can be updated
         In general - we only allow updating manually added transactions, imported transactions would be overwritten
         Exception is monzo which provides an api to directly update the transaction in Monzo
         """
         existing = LedgerRepo.get_transaction_by_id(session, update_dto.id)
+        if not existing:
+            raise TransactionNotFoundException()
         source = None if not existing else existing.tx_metadata.get("source")
         # We limit what we can update depending on the source
         if source in ["santander", "accrual", "energy"]:
-            return
+            logging.warning("can not update transaction %s as source is %s", update_dto.id, source)
+            raise ImmutableTransactionException()
         if source == "monzo":
             # TODO support updating tags and narration
-            pass
+            raise ImmutableTransactionException()
 
-        # those without a poster source are manually added and can safely be fully upserted
-        update = Transaction()
-        LedgerRepo.bulk_upsert_transactions(session, [update_dto])
+        self.create_or_update_transactions([update_dto])
+        session.commit()
+        return self.get_transaction(update_dto.id)
 
+
+    def create_transaction(self, session, create_dto: CreateTransactionDto) -> TransactionDto:
+        amount = sum([e.amount for e in create_dto.entries if e.amount >= 0])
+        key = LedgerService.compute_key(create_dto.transaction_datetime, create_dto.payee, create_dto.narration, amount)
+        full_dto = TransactionDto(id=uuid.uuid4(), key=key, **create_dto.model_dump())
+        self.create_or_update_transactions([full_dto])
+        session.commit()
+        return self.get_transaction(full_dto.id)
 
     @staticmethod
     def find_all_by_metadata_by_date_desc(session, key: str, value: str) -> list[TransactionDto]:
         res = LedgerRepo.find_all_by_metadata_by_date_desc(session, key, value)
         return [TransactionDto.model_validate(x) for x in res]
+
+
+    @staticmethod
+    def safe_delete_transaction(tx_id: uuid.UUID) -> None:
+        with Session.begin() as session:
+            existing = LedgerRepo.get_transaction_by_id(session, tx_id)
+            if not existing:
+                raise TransactionNotFoundException()
+            source = existing.tx_metadata.get("source")
+            if source:
+                raise ImmutableTransactionException()
+            LedgerService.delete_transactions(session, [tx_id])
+
 
     @staticmethod
     def delete_transactions(session, ids: list[uuid.UUID]):

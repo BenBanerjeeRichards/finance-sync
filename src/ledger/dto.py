@@ -55,6 +55,17 @@ class TransactionDto(BaseModel):
     tags: list[str] = Field(default_factory=list)
     entries: list[EntryDto] = Field(default_factory=list)
 
+class CreateTransactionDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    transaction_datetime: datetime
+    payee: str | None = None
+    narration: str | None = None
+    external_metadata: dict = Field(default_factory=dict)
+    tx_metadata: dict = Field(default_factory=dict, serialization_alias="metadata")
+    flagged: bool = False
+    tags: list[str] = Field(default_factory=list)
+    entries: list[EntryDto] = Field(default_factory=list)
+
 
 class TransactionListAccountDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -11,7 +11,11 @@ from starlette.templating import Jinja2Templates
 
 import dependencies
 from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
+from ledger.dto import TransactionDto, CreateTransactionDto
+from ledger.ledger_service import ImmutableTransactionException, TransactionNotFoundException, \
+    TransactionDoesNotBalanceException, LedgerService
 from ledger.repo import TransactionFilters
+from main import Session
 from model import MonzoSyncMessage
 from poster.poster_config_service import (
     PosterConfigService,
@@ -98,11 +102,46 @@ def create_fastapi() -> FastAPI:
         return txs.model_dump()
 
     @app.get("/finance/transactions/{transaction_id}")
-    async def get_transactions(transaction_id: uuid.UUID):
+    async def get_transaction(transaction_id: uuid.UUID):
         tx = ledger_service.get_transaction(transaction_id)
         if not tx:
             raise HTTPException(status_code=404, detail="Transaction not found")
         return tx.model_dump()
+
+
+    @app.put("/finance/transactions/{transaction_id}")
+    async def update_transaction(transaction_id: uuid.UUID, update: TransactionDto):
+        try:
+            with Session.begin() as session:
+                tx = ledger_service.update_transaction(session, update)
+        except ImmutableTransactionException:
+            raise HTTPException(status_code=404, detail="Can not update transaction")
+        except TransactionNotFoundException:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+        except TransactionDoesNotBalanceException:
+            raise HTTPException(status_code=404, detail="Transaction does not balance")
+
+        return tx.model_dump()
+
+
+    @app.post("/finance/transactions/{transaction_id}")
+    async def create_transaction(transaction_id: uuid.UUID, create: CreateTransactionDto):
+        try:
+            with Session.begin() as session:
+                tx = ledger_service.create_transaction(session, create)
+        except TransactionDoesNotBalanceException:
+            raise HTTPException(status_code=404, detail="Transaction does not balance")
+
+
+    @app.delete("/finance/transactions/{transaction_id}")
+    async def delete_transaction(transaction_id: uuid.UUID):
+        try:
+            LedgerService.safe_delete_transaction(transaction_id)
+        except ImmutableTransactionException:
+            raise HTTPException(status_code=404, detail="Can not update transaction")
+        except TransactionNotFoundException:
+            raise HTTPException(status_code=404, detail="Transaction not found")
+
 
 
     @app.get("/finance/payee")
