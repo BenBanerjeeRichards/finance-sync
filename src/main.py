@@ -1,7 +1,7 @@
 import asyncio
+import signal
 
 import uvicorn
-from pika.adapters.blocking_connection import BlockingConnection
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -53,9 +53,8 @@ def load_settings() -> Settings:
     )
 
 
-def listen_for_updates(pika_connection: BlockingConnection, handler: "Handler"):
+def listen_for_updates(channel, handler: "Handler"):
     # Wire everything up...not massivly sustainable but ok for something small
-    channel = pika_connection.channel()
 
     # Command queues
     channel.queue_declare(queue="monzo-sync-transactions", durable=True)
@@ -98,9 +97,21 @@ def main():
     def start_pika():
         from handler import Handler
         message_handler = Handler()
-        listen_for_updates(dependencies.get_rabbitmq_connection(), message_handler)
+        connection = dependencies.get_rabbitmq_connection()
+        channel = connection.channel()
+
+        def handle_sigterm(signum, frame):
+            logging.info("Pika consumer received SIGTERM, stopping consuming")
+            channel.stop_consuming()
+
+        signal.signal(signal.SIGTERM, handle_sigterm)
+        try:
+            listen_for_updates(channel, message_handler)
+        finally:
+            connection.close()
 
     def start_gc_sync():
+        # uvicorn installs its own SIGTERM/SIGINT handlers and shuts down gracefully
         async def start_async():
             config = uvicorn.Config(
                 create_fastapi(),
@@ -111,12 +122,31 @@ def main():
         logging.info("Starting finance sync server on 0.0.0.0:8080")
         asyncio.run(start_async())
 
-    p1 = multiprocessing.Process(target=start_pika)
-    p2 = multiprocessing.Process(target=start_gc_sync)
+    p1 = multiprocessing.Process(target=start_pika, name="pika-consumer")
+    p2 = multiprocessing.Process(target=start_gc_sync, name="web-server")
     p1.start()
     p2.start()
-    p1.join()
-    p2.join()
+
+    def handle_shutdown(signum, frame):
+        # kubelet only signals PID 1 (this process), so forward it to the children
+        logging.info("Received shutdown signal, forwarding to child processes")
+        for p in (p1, p2):
+            if p.is_alive():
+                os.kill(p.pid, signal.SIGTERM)
+
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
+
+    p1.join(timeout=10)
+    p2.join(timeout=10)
+
+    for p in (p1, p2):
+        if p.is_alive():
+            logging.warning("%s did not exit gracefully in time, killing", p.name)
+            p.kill()
+            p.join()
+
+    engine.dispose()
 
 
 if __name__ == "__main__":

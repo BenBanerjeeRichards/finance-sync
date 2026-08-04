@@ -141,7 +141,6 @@ class EnergyConfig(BaseModel):
     model_config = {"extra": "forbid"}
 
 class Config(BaseModel):
-    accrualBeanFileName: str
     gocardless: GoCardlessConfig
     monzoCustomCategories: dict[str, str] = {}
     energySyncBaseUrl: str

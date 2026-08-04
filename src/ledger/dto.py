@@ -25,9 +25,9 @@ class LedgerDto(BaseModel):
 class AccountDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
-    name: str
-    type: AccountType
-    tags: list[str] = Field(default_factory=list)
+    name: str | None = None
+    type: AccountType | None = None
+    tags: list[str] | None = Field(default_factory=list)
 
 
 class EntryDto(BaseModel):
