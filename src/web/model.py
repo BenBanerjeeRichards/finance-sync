@@ -6,6 +6,8 @@ from uuid import UUID
 from fastapi import Query
 from pydantic import Field, BaseModel
 
+from ledger.dto import AccountType
+
 
 class GetTransactionsParams(BaseModel):
     created_gt: datetime.datetime | None = None
@@ -44,6 +46,17 @@ class GetBalanceHistoryParams(BaseModel):
 
 class GetPayeeParams(BaseModel):
     filter: str | None = None
+
+
+class AccountCreateRequest(BaseModel):
+    name: str
+    type: AccountType
+    tags: list[str] = Field(default_factory=list)
+
+
+class AccountUpdateRequest(BaseModel):
+    name: str | None = None
+    tags: list[str] | None = None
 
 
 class PosterConfigResponse(BaseModel):

@@ -177,6 +177,10 @@ class LedgerRepo:
         return list(session.scalars(stmt).all())
 
     @staticmethod
+    def get_account_by_id(session: Session, account_id: uuid.UUID) -> Account | None:
+        return session.get(Account, account_id)
+
+    @staticmethod
     def ensure_account(session: Session, acc: Account):
         st = insert(Account).values(name=acc.name, type=acc.type, tags=acc.tags, id=acc.id).on_conflict_do_nothing(
             index_elements=["name", "account_type"])

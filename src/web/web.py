@@ -13,7 +13,7 @@ import dependencies
 from importer.import_service import ImportService, MonzoImportRuleDto, GcImportRuleDto, UnknownAccountError
 from ledger.dto import TransactionDto, CreateTransactionDto
 from ledger.ledger_service import ImmutableTransactionException, TransactionNotFoundException, \
-    TransactionDoesNotBalanceException, LedgerService
+    TransactionDoesNotBalanceException, LedgerService, AccountNotFoundException, DuplicateAccountException
 from ledger.repo import TransactionFilters
 from main import Session
 from model import MonzoSyncMessage
@@ -157,6 +157,24 @@ def create_fastapi() -> FastAPI:
         return {
             "accounts": ledger_service.get_accounts()
         }
+
+    @app.post("/finance/account")
+    async def create_account(create: AccountCreateRequest):
+        try:
+            account = LedgerService.create_account(create.name, create.type, create.tags)
+        except DuplicateAccountException as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return account.model_dump()
+
+    @app.put("/finance/account/{account_id}")
+    async def update_account(account_id: uuid.UUID, update: AccountUpdateRequest):
+        try:
+            account = LedgerService.update_account(account_id, update.name, update.tags)
+        except AccountNotFoundException:
+            raise HTTPException(status_code=404, detail="Account not found")
+        except DuplicateAccountException as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return account.model_dump()
 
     @app.get("/finance/tag")
     async def get_tags():

@@ -5,10 +5,11 @@ from decimal import Decimal
 from typing import Literal
 
 from sqlalchemy import delete
+from sqlalchemy.exc import IntegrityError
 
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
-    PeriodicBalancesDto, CreateTransactionDto
-from ledger.model import Transaction, Entry
+    PeriodicBalancesDto, CreateTransactionDto, AccountType
+from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
 from ledger.repo import LedgerRepo, TransactionFilters, ListTransactionCursor
 from main import Session
 from model import Config, SimpleLedgerTransaction
@@ -22,6 +23,12 @@ class TransactionNotFoundException(Exception):
     pass
 
 class TransactionDoesNotBalanceException(Exception):
+    pass
+
+class AccountNotFoundException(Exception):
+    pass
+
+class DuplicateAccountException(Exception):
     pass
 
 class LedgerService:
@@ -59,6 +66,36 @@ class LedgerService:
     def get_accounts() -> list[AccountDto]:
         with Session.begin() as session:
             return LedgerRepo.get_accounts(session)
+
+    @staticmethod
+    def create_account(name: str, type: AccountType, tags: list[str] | None = None) -> AccountDto:
+        with Session.begin() as session:
+            acc = Account(id=uuid.uuid4(), name=name, type=ModelAccountType(type.value), tags=tags or [])
+            session.add(acc)
+            try:
+                session.flush()
+            except IntegrityError:
+                raise DuplicateAccountException(f"An account named '{name}' of type '{type.value}' already exists")
+            session.refresh(acc)
+            return AccountDto.model_validate(acc)
+
+    @staticmethod
+    def update_account(account_id: uuid.UUID, name: str | None = None, tags: list[str] | None = None) -> AccountDto:
+        with Session.begin() as session:
+            acc = LedgerRepo.get_account_by_id(session, account_id)
+            if acc is None:
+                raise AccountNotFoundException()
+            if name is not None:
+                acc.name = name
+            if tags is not None:
+                acc.tags = tags
+            try:
+                session.flush()
+            except IntegrityError:
+                raise DuplicateAccountException(
+                    f"An account named '{acc.name}' of type '{acc.type.value}' already exists")
+            session.refresh(acc)
+            return AccountDto.model_validate(acc)
 
     @staticmethod
     def get_tags() -> list[str]:
