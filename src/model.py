@@ -2,8 +2,11 @@ import datetime
 import uuid
 from decimal import Decimal
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, field_validator
+
+from ledger.dto import TransactionDto, EntryDto, AccountDto
 
 
 class Merchant(BaseModel):
@@ -184,3 +187,31 @@ class SimpleLedgerTransaction(BaseModel):
     source: str = ""
     local_amount: Decimal | None = None
     local_currency: str | None = None
+
+    def to_dto(self) -> TransactionDto:
+        if not self.tx_datetime:
+            dt = datetime.datetime.combine(self.tx_date, datetime.time.min, tzinfo=ZoneInfo("UTC"))
+        else:
+            dt = self.tx_datetime
+
+        transaction = TransactionDto(id=uuid.uuid4(),
+                                     transaction_datetime=dt,
+                                     key=self.external_id, payee=self.payee, narration=self.description,
+                                     external_metadata=self.metadata, tx_metadata=self.ledger_metadata,
+                                     flagged=self.flagged, tags=self.tags, entries=[])
+
+        local_amount = self.local_amount
+        local_currency = self.local_currency
+        if not local_amount:
+            local_amount = self.amount
+            local_currency = "GBP"
+
+        credit_entry = EntryDto(id=uuid.uuid4(), account=AccountDto(id=self.credit_account_id),
+                                amount=abs(self.amount) * -1, local_amount=abs(local_amount) * -1,
+                                local_currency=local_currency, transaction_id=transaction.id)
+        debit_entry = EntryDto(id=uuid.uuid4(), account=AccountDto(id=self.debit_account_id),
+                               amount=abs(self.amount), local_amount=abs(local_amount),
+                               local_currency=local_currency, transaction_id=transaction.id)
+
+        transaction.entries = [credit_entry, debit_entry]
+        return transaction

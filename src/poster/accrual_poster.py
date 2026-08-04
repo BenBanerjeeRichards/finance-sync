@@ -84,7 +84,7 @@ class AccrualsPoster(BasePoster):
                                              metadata={})
                 settlement_transactions.append(tx)
 
-        self.ledger_service.create_or_update_transactions(settlement_transactions)
+        self.ledger_service.create_or_update_simple_transactions(settlement_transactions)
 
         settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         if not settlements:
@@ -134,7 +134,7 @@ class AccrualsPoster(BasePoster):
         if delete_tx_keys:
             logging.warning("%s: deleting transactions: %s", rule.name, delete_tx_keys)
 
-        self.ledger_service.create_or_update_transactions(provisional_transactions)
+        self.ledger_service.create_or_update_simple_transactions(provisional_transactions)
         self.ledger_service.delete_transactions_by_key(session, list(delete_tx_keys))
 
 def split_money_decimal(total_amount, n):

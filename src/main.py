@@ -137,14 +137,8 @@ def main():
     signal.signal(signal.SIGTERM, handle_shutdown)
     signal.signal(signal.SIGINT, handle_shutdown)
 
-    p1.join(timeout=10)
-    p2.join(timeout=10)
-
-    for p in (p1, p2):
-        if p.is_alive():
-            logging.warning("%s did not exit gracefully in time, killing", p.name)
-            p.kill()
-            p.join()
+    p1.join()
+    p2.join()
 
     engine.dispose()
 

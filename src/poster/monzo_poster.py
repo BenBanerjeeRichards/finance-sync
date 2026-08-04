@@ -31,7 +31,7 @@ class MonzoPoster(BasePoster):
 
         ledger = LedgerService(dependencies.get_config())
         logging.info("writing monzo to db (%s)", len(ledger_transactions))
-        ledger.create_or_update_transactions(ledger_transactions)
+        ledger.create_or_update_simple_transactions(ledger_transactions)
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.import_config.cash_account_id

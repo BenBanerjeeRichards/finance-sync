@@ -75,4 +75,4 @@ class EnergyConsumptionPoster(BasePoster):
                                                         source="energy",
                                                         amount=amount,
                                                         metadata={}))
-        LedgerService(self.config).create_or_update_transactions(transactions)
+        LedgerService(self.config).create_or_update_simple_transactions(transactions)
