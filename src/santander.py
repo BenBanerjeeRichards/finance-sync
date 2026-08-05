@@ -35,6 +35,9 @@ def _parse_description(description: str) -> ParsedDescription | None:
     if match:
         return ParsedDescription(type=TRANSFER, reference=match.group(2), account_name=match.group(1))
 
+    match = re.search(r'TRANSFER TO (.*) REFERENCE (.*)', description)
+    if match:
+        return ParsedDescription(type=TRANSFER, reference=match.group(2), account_name=match.group(1))
 
     match = re.search(r'FASTER PAYMENTS RECEIPT REF\.?(.*) FROM (.*)', description)
     if match:
