@@ -55,6 +55,9 @@ class TransactionDto(BaseModel):
     tags: list[str] = Field(default_factory=list)
     entries: list[EntryDto] = Field(default_factory=list)
 
+    def absolute_amount(self) -> Decimal:
+        return sum([e.amount for e in self.entries if e.amount > 0])
+
 class CreateTransactionDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     transaction_datetime: datetime

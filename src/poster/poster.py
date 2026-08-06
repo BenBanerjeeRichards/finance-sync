@@ -7,6 +7,7 @@ from poster.accrual_poster import AccrualsPoster
 from poster.base_poster import BasePoster
 from poster.energy_sync import EnergyConsumptionPoster
 from poster.monzo_poster import MonzoPoster
+from poster.mortgage_poster import MortgagePoster
 from poster.poster_config_service import PosterConfigService
 from poster.santander_poster import SantanderPoster
 
@@ -39,6 +40,7 @@ def run_posters() -> None:
     santander_config = _get_santander_config()
     energy_config =  PosterConfigService.get_energy_config()
     accrual_rules = PosterConfigService.get_accrual_configs()
+    mortgage_rules = PosterConfigService.get_mortgage_configs()
 
     posters: list[BasePoster] = []
     if monzo_config is not None:
@@ -47,6 +49,8 @@ def run_posters() -> None:
         posters.append(SantanderPoster(santander_config))
     for rule in accrual_rules:
         posters += [AccrualsPoster(rule)]
+    for rule in mortgage_rules:
+        posters += [MortgagePoster(rule)]
     if energy_config is not None:
         posters.append(EnergyConsumptionPoster(energy_config))
 

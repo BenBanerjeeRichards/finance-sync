@@ -125,6 +125,24 @@ class AccrualConfig(BaseModel):
 
     model_config = {"extra": "forbid"}
 
+class MortgageConfig(BaseModel):
+    name: str
+    # Date of first payment
+    startDate: datetime.date
+    # How long mortgage is for. typically 2Y, 5Y, 10Y
+    fixedRateMonths: int
+    # How long total duration is. typically 25-35Y for new mortgage
+    termMonths: int
+    # Annual Interest - % charged in existing principal per year
+    interestPercent: Decimal
+    # Total principal mortgage based on
+    initialPrincipal: Decimal
+    # Balance of mortgage. Used to compute interest/principal balance each month
+    mortgageLiabilityAccount: uuid.UUID
+    # Expense account to debit interest
+    mortgageInterestAccount: uuid.UUID
+
+
 class EnergyConfig(BaseModel):
     electricityPrepayAccount: uuid.UUID
     gasPrepayAccount: uuid.UUID

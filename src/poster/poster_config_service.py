@@ -7,11 +7,12 @@ from sqlalchemy.exc import IntegrityError
 
 from ledger.model import PosterConfig
 from main import Session
-from model import AccrualConfig, EnergyConfig
+from model import AccrualConfig, EnergyConfig, MortgageConfig
 
 POSTER_TYPES: dict[str, type[BaseModel]] = {
     "energy": EnergyConfig,
     "accrual": AccrualConfig,
+    "mortgage": MortgageConfig,
 }
 
 SINGLETON_TYPES = {"energy"}
@@ -152,3 +153,8 @@ class PosterConfigService:
     def get_accrual_configs() -> list[AccrualConfig]:
         configs = PosterConfigService.list_configs("accrual")
         return [AccrualConfig(**c.config) for c in configs if c.enabled]
+
+    @staticmethod
+    def get_mortgage_configs() -> list[MortgageConfig]:
+        configs = PosterConfigService.list_configs("mortgage")
+        return [MortgageConfig(**c.config) for c in configs if c.enabled]
