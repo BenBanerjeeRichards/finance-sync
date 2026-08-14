@@ -123,6 +123,7 @@ class MonzoImportRuleResponse(BaseModel):
     counterparty_name: str | None = None
     transaction_id: UUID | None = None
     metadata: dict[str, str] = {}
+    merchant_name: str | None = None
 
 
 class GcImportRuleResponse(BaseModel):
@@ -164,6 +165,7 @@ class MonzoImportRuleUpdate(BaseModel):
     tags: list[str] = []
     pot_id: str | None = None
     merchant_group_id: str | None = None
+    merchant_name: str | None = None
     counterparty_name: str | None = None
     transaction_id: UUID | None = None
     metadata: dict[str, str] = {}

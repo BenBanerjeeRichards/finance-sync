@@ -173,7 +173,9 @@ class MonzoImportRule(Base):
     pot_id: Mapped[str | None] = mapped_column()
     # Defines the Merchant (group means all branches, e.g. all Sainburys have same group id)
     merchant_group_id: Mapped[str | None] = mapped_column()
-    # counterparty.name
+    # substring match on merchant.name
+    merchant_name: Mapped[str | None] = mapped_column()
+    # substring match on counterparty.name
     counterparty_name: Mapped[str | None] = mapped_column()
     # match for a single transaction, useful for specific overrides
     transaction_id: Mapped[UUID | None] = mapped_column()

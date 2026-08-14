@@ -50,6 +50,7 @@ class MonzoImportRuleDto(BaseModel):
     pot_id: str | None = None
     merchant_group_id: str | None = None
     counterparty_name: str | None = None
+    merchant_name: str | None = None
     transaction_id: uuid.UUID | None = None
     metadata: dict[str, str] = {}
 
@@ -317,6 +318,7 @@ class ImportService:
                 pot_id=r.pot_id,
                 merchant_group_id=r.merchant_group_id,
                 counterparty_name=r.counterparty_name,
+                merchant_name=r.merchant_name,
                 transaction_id=r.transaction_id,
                 metadata=r.new_metadata,
             ) for r in results]
@@ -412,6 +414,7 @@ class ImportService:
                     pot_id=rule.pot_id,
                     merchant_group_id=rule.merchant_group_id,
                     counterparty_name=rule.counterparty_name,
+                    merchant_name=rule.merchant_name,
                     transaction_id=rule.transaction_id,
                     new_metadata=type_coerce(rule.metadata, JSONB),
                 )
@@ -430,6 +433,7 @@ class ImportService:
                         tags=rule.tags,
                         pot_id=rule.pot_id,
                         merchant_group_id=rule.merchant_group_id,
+                        merchant_name=rule.merchant_name,
                         counterparty_name=rule.counterparty_name,
                         transaction_id=rule.transaction_id,
                         metadata=type_coerce(rule.metadata, JSONB),

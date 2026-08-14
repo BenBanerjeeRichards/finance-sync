@@ -128,7 +128,9 @@ class MonzoPoster(BasePoster):
         if rule.counterparty_name and tx.counterparty and tx.counterparty.name:
             if rule.counterparty_name.lower() in tx.counterparty.name.lower():
                 return True
-
+        if rule.merchant_name and tx.merchant and tx.merchant.name:
+            if rule.merchant_name.lower() in tx.merchant.name.lower():
+                return True
         if rule.category and rule.category.lower() == tx.category.lower():
             return True
         return False
