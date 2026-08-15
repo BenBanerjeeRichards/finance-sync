@@ -132,6 +132,8 @@ def create_fastapi() -> FastAPI:
         except TransactionDoesNotBalanceException:
             raise HTTPException(status_code=404, detail="Transaction does not balance")
 
+        return tx.model_dump()
+
 
     @app.delete("/finance/transactions/{transaction_id}")
     async def delete_transaction(transaction_id: uuid.UUID):

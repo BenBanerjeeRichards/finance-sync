@@ -19,17 +19,22 @@ import logging
 class ImmutableTransactionException(Exception):
     pass
 
+
 class TransactionNotFoundException(Exception):
     pass
+
 
 class TransactionDoesNotBalanceException(Exception):
     pass
 
+
 class AccountNotFoundException(Exception):
     pass
 
+
 class DuplicateAccountException(Exception):
     pass
+
 
 class LedgerService:
 
@@ -102,10 +107,15 @@ class LedgerService:
         with Session.begin() as session:
             return LedgerRepo.get_tags(session)
 
+
+    @staticmethod
+    def get_balance_with_session(session: Session, filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
+        return LedgerRepo.get_balances(session, filters, account_types)
+
     @staticmethod
     def get_balance(filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
         with Session.begin() as session:
-            return LedgerRepo.get_balances(session, filters, account_types)
+            return LedgerService.get_balance_with_session(session, filters, account_types)
 
     @staticmethod
     def get_balance_history(filters: TransactionFilters, account_types: list[str],
@@ -114,44 +124,47 @@ class LedgerService:
             return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
     def create_or_update_transactions(self, txs: list[TransactionDto]):
+        with Session.begin() as session:
+            self.create_or_update_transactions_with_sesssion(session, txs)
+
+    def create_or_update_transactions_with_sesssion(self, session, txs: list[TransactionDto]):
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
         for tx in txs:
             balance = sum([e.amount for e in tx.entries])
             if balance != Decimal("0"):
-                logging.warning("transaction %s balance is %s", tx.id, balance)
+                logging.warning("transaction %s (%s) balance is %s", tx.id, tx.key, balance)
                 raise TransactionDoesNotBalanceException()
-        with Session.begin() as session:
-            transactions = []
-            dt: datetime
-            for tx in txs:
-                transaction = Transaction(id=uuid.uuid4(),
-                                          transaction_datetime=tx.transaction_datetime,
-                                          key=tx.key, payee=tx.payee, narration=tx.narration,
-                                          external_metadata=tx.external_metadata, tx_metadata=tx.tx_metadata,
-                                          flagged=tx.flagged, tags=tx.tags)
-                transactions.append(transaction)
+        transactions = []
+        dt: datetime
+        for tx in txs:
+            transaction = Transaction(id=uuid.uuid4(),
+                                      transaction_datetime=tx.transaction_datetime,
+                                      key=tx.key, payee=tx.payee, narration=tx.narration,
+                                      external_metadata=tx.external_metadata, tx_metadata=tx.tx_metadata,
+                                      flagged=tx.flagged, tags=tx.tags)
+            transactions.append(transaction)
 
-            transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
-            entries = []
-            active_legs = []
+        transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
+        entries = []
+        active_legs = []
 
-            for tx in txs:
-                tx_id = transaction_key_to_id[tx.key]
-                for entry in tx.entries:
-                    db_entry = Entry(id=entry.id, account_id=entry.account.id, amount=entry.amount, local_amount=entry.local_amount,
-                                     local_currency=entry.local_currency, transaction_id=tx_id)
+        for tx in txs:
+            tx_id = transaction_key_to_id[tx.key]
+            for entry in tx.entries:
+                db_entry = Entry(id=entry.id, account_id=entry.account.id, amount=entry.amount,
+                                 local_amount=entry.local_amount,
+                                 local_currency=entry.local_currency, transaction_id=tx_id)
 
-                    entries.append(db_entry)
-                    active_legs.append((tx_id, db_entry.account_id))
-            LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
-            LedgerRepo.bulk_upsert_entries(session, entries)
+                entries.append(db_entry)
+                active_legs.append((tx_id, db_entry.account_id))
+        LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
+        LedgerRepo.bulk_upsert_entries(session, entries)
 
     def create_or_update_simple_transactions(self, ledger_txs: list[SimpleLedgerTransaction]):
         transactions = [tx.to_dto() for tx in ledger_txs]
         self.create_or_update_transactions(transactions)
-
 
     def update_transaction(self, session, update_dto: TransactionDto) -> TransactionDto:
         """
@@ -175,7 +188,6 @@ class LedgerService:
         session.commit()
         return self.get_transaction(update_dto.id)
 
-
     def create_transaction(self, session, create_dto: CreateTransactionDto) -> TransactionDto:
         amount = sum([e.amount for e in create_dto.entries if e.amount >= 0])
         key = LedgerService.compute_key(create_dto.transaction_datetime, create_dto.payee, create_dto.narration, amount)
@@ -189,7 +201,6 @@ class LedgerService:
         res = LedgerRepo.find_all_by_metadata_by_date_desc(session, key, value)
         return [TransactionDto.model_validate(x) for x in res]
 
-
     @staticmethod
     def safe_delete_transaction(tx_id: uuid.UUID) -> None:
         with Session.begin() as session:
@@ -200,7 +211,6 @@ class LedgerService:
             if source:
                 raise ImmutableTransactionException()
             LedgerService.delete_transactions(session, [tx_id])
-
 
     @staticmethod
     def delete_transactions(session, ids: list[uuid.UUID]):
