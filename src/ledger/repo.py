@@ -22,6 +22,7 @@ class TransactionFilters(BaseModel):
     tags: list[str] | None = None
     payee: str | None = None
     text_filter: str | None = None  # search over trigrams {payee, tags, narration}
+    flagged: bool | None = None
 
 
 class ListTransactionCursor(BaseModel):
@@ -161,6 +162,8 @@ class LedgerRepo:
                 Transaction.search_vector.op("%>")(filters.text_filter),
                 Transaction.key == filters.text_filter
             ))
+        if filters.flagged:
+            q = q.where(Transaction.flagged == filters.flagged)
         return q
 
     @staticmethod

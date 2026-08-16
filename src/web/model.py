@@ -17,6 +17,7 @@ class GetTransactionsParams(BaseModel):
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None
+    flagged: bool | None = None
     count: int = 100
     cursor: str | None = None
 
@@ -29,6 +30,7 @@ class GetBalanceParams(BaseModel):
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None
+    flagged: bool | None = None
     account_types: list[str] = Field(Query(default=[]))
 
 
@@ -40,6 +42,7 @@ class GetBalanceHistoryParams(BaseModel):
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None
+    flagged: bool | None = None
     account_types: list[str] = Field(Query(default=[]))
     period: Literal["day", "month", "week"] = "month"
 
