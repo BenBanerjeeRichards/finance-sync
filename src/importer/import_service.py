@@ -413,8 +413,8 @@ class ImportService:
                     tags=rule.tags,
                     pot_id=rule.pot_id,
                     merchant_group_id=rule.merchant_group_id,
-                    counterparty_name=rule.counterparty_name,
                     merchant_name=rule.merchant_name,
+                    counterparty_name=rule.counterparty_name,
                     transaction_id=rule.transaction_id,
                     new_metadata=type_coerce(rule.metadata, JSONB),
                 )

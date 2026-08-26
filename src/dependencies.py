@@ -12,6 +12,8 @@ from ledger.ledger_service import LedgerService
 from model import Config, Settings
 from monzo import MonzoClient
 from notification.discord import DiscordClient
+from notification.notification_repo import NotificationRepo
+from notification.notification_service import NotificationService
 from notification.notifier import Notifier
 from storage import Store
 
@@ -129,3 +131,11 @@ def get_ledger_service() -> LedgerService:
 
 def get_import_service() -> ImportService:
     return ImportService()
+
+
+def get_notification_repo() -> NotificationRepo:
+    return NotificationRepo()
+
+
+def get_notification_service() -> NotificationService:
+    return NotificationService(get_discord_client(), get_ledger_service())

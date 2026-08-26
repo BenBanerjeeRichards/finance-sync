@@ -56,6 +56,7 @@ class Handler:
     def __init__(self):
         self.monzo_importer = MonzoImporter(dependencies.get_config(), dependencies.get_monzo_client(), dependencies.get_minio_client())
         self.store = Store(dependencies.get_minio_client())
+        self.notifier = dependencies.get_notification_service()
 
     @rmq_handler(MonzoSyncMessage)
     def on_monzo_sync_transactions(self, sync_message: MonzoSyncMessage):
@@ -86,11 +87,11 @@ class Handler:
         santander_importer = dependencies.get_santander_importer()
         santander_importer.import_transactions()
         age_days = santander_importer.update_expires_dates()
-        if age_days >= config.config.gocardless.notifyOlderThan:
+        if age_days >= config.gocardless.notifyOlderThan:
             dependencies.get_notifier().notify_expiring("GoCardless", config.gocardless.startUri, 90 - age_days)
         run_posters()
 
-    @rmq_handler(SimpleLedgerTransaction)
-    def notify_new_transaction(self, tx: SimpleLedgerTransaction):
-        # TODO implement this again!
-        pass
+    @rmq_handler()
+    def on_send_notifications(self):
+        self.notifier.send_notifications()
+

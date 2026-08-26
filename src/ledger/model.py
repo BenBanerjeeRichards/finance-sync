@@ -173,7 +173,7 @@ class MonzoImportRule(Base):
     pot_id: Mapped[str | None] = mapped_column()
     # Defines the Merchant (group means all branches, e.g. all Sainburys have same group id)
     merchant_group_id: Mapped[str | None] = mapped_column()
-    # substring match on merchant.name
+    # substring name match on merchant.name
     merchant_name: Mapped[str | None] = mapped_column()
     # substring match on counterparty.name
     counterparty_name: Mapped[str | None] = mapped_column()
@@ -240,3 +240,16 @@ class GoCardlessImportRule(Base):
     account_name_matches: Mapped[str | None] = mapped_column()
     reference_name_matches: Mapped[str | None] = mapped_column()
     amount_equals: Mapped[Decimal | None] = mapped_column()
+
+
+class Notification(Base):
+    __tablename__ = "notification"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(unique=True)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    type: Mapped[str] = mapped_column(index=True)
+    context: Mapped[dict] = mapped_column(
+        JSONB,
+        server_default=text("'{}'::jsonb")
+    )

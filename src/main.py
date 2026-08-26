@@ -62,6 +62,7 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.queue_declare(queue="monzo-update-notes", durable=True)
     channel.queue_declare(queue="monzo-refresh-token", durable=True)
     channel.queue_declare(queue="update-ledger", durable=True)
+    channel.queue_declare(queue="send-notifications", durable=True)
 
     # bit lazy... just subscribe from energy sync straight to the update-ledger to force energy to be updated
     channel.queue_bind("update-ledger", "energy.synced", routing_key="")
@@ -81,12 +82,18 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.basic_consume(queue="monzo-refresh-token", on_message_callback=handler.on_monzo_refresh_token,
                           auto_ack=True)
     channel.basic_consume(queue="update-ledger", on_message_callback=handler.on_update_ledger, auto_ack=True)
-    channel.basic_consume(queue="transaction.notification", on_message_callback=handler.notify_new_transaction,
-                          auto_ack=True)
     channel.basic_consume(queue="santander-sync-transactions",
                           on_message_callback=handler.on_santander_sync_transactions,
                           auto_ack=True)
+    channel.basic_consume(queue="send-notifications",
+                          on_message_callback=handler.on_send_notifications,
+                          auto_ack=True)
 
+    # TODO remove this
+    import uuid
+    tx = dependencies.get_ledger_service().get_transaction(uuid.UUID("520af774-767a-4b5c-81e8-2ce912a5c45a"))
+    dependencies.get_notification_service().register_new_transaction(tx)
+    #
     logging.info("Listening for messages")
     channel.start_consuming()
 
