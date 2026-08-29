@@ -40,6 +40,7 @@ def get_settings() -> Settings:
         santander_discord_webhook=os.environ["SANTANDER_DISCORD_WEBHOOK"]
     )
 
+
 @lru_cache
 def get_config() -> Config:
     settings = get_settings()
@@ -92,6 +93,7 @@ def get_discord_client() -> DiscordClient:
     return DiscordClient(settings.santander_discord_webhook)
 
 
+@lru_cache
 def get_rabbitmq_connection() -> pika.BlockingConnection:
     settings = get_settings()
     return pika.BlockingConnection(

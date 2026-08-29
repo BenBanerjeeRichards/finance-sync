@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import logging
 
 import dependencies
+from ledger.dto import TransactionDto
 from poster.poster import run_posters
 from importer.monzo_import import MonzoImporter
 from model import MonzoSyncMessage, TransactionUpdate, SimpleLedgerTransaction
@@ -95,3 +96,7 @@ class Handler:
     def on_send_notifications(self):
         self.notifier.send_notifications()
 
+    @rmq_handler(TransactionDto)
+    def on_notify_transaction(self, tx: TransactionDto):
+        logging.info("got new transaction.created %s", tx.model_dump_json())
+        self.notifier.register_new_transaction(tx)

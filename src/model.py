@@ -215,7 +215,7 @@ class SimpleLedgerTransaction(BaseModel):
         transaction = TransactionDto(id=uuid.uuid4(),
                                      transaction_datetime=dt,
                                      key=self.external_id, payee=self.payee, narration=self.description,
-                                     external_metadata=self.metadata, tx_metadata=self.ledger_metadata,
+                                     external_metadata=self.metadata, ledger_metadata=self.ledger_metadata,
                                      flagged=self.flagged, tags=self.tags, entries=[])
 
         local_amount = self.local_amount

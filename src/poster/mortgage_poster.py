@@ -168,7 +168,7 @@ class MortgagePoster(BasePoster):
                                      tags: list[str] | None = None) -> TransactionDto:
         tags = tags or []
         transaction = TransactionDto(id=uuid.uuid4(), transaction_datetime=dt, key=external_id, payee=payee,
-                                     narration=narration, external_metadata={}, tx_metadata={
+                                     narration=narration, external_metadata={}, ledger_metadata={
                 "mortgage": "computed",
                 "source": "mortgage"
             }, entries=[], tags=tags)

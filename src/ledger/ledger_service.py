@@ -7,6 +7,8 @@ from typing import Literal
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
+import dependencies
+from constants import EXCHANGE_TX_CREATED
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto, CreateTransactionDto, AccountType
 from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
@@ -40,6 +42,7 @@ class LedgerService:
 
     def __init__(self, config: Config):
         self.config = config
+        self.rmq_connection = dependencies.get_rabbitmq_connection()
 
     @staticmethod
     def get_transactions(filters: TransactionFilters, cursor_str: str | None,
@@ -125,9 +128,14 @@ class LedgerService:
 
     def create_or_update_transactions(self, txs: list[TransactionDto]):
         with Session.begin() as session:
-            self.create_or_update_transactions_with_sesssion(session, txs)
+            inserted = self.create_or_update_transactions_with_sesssion(session, txs)
+        # publish event only after session commits
+        if inserted:
+            logging.info("new transactions %s", inserted)
+        [self._publish_new_transaction_event(tx_id) for tx_id in inserted]
 
-    def create_or_update_transactions_with_sesssion(self, session, txs: list[TransactionDto]):
+
+    def create_or_update_transactions_with_sesssion(self, session, txs: list[TransactionDto]) -> list[uuid.UUID]:
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
@@ -142,11 +150,11 @@ class LedgerService:
             transaction = Transaction(id=uuid.uuid4(),
                                       transaction_datetime=tx.transaction_datetime,
                                       key=tx.key, payee=tx.payee, narration=tx.narration,
-                                      external_metadata=tx.external_metadata, tx_metadata=tx.tx_metadata,
+                                      external_metadata=tx.external_metadata, ledger_metadata=tx.ledger_metadata,
                                       flagged=tx.flagged, tags=tx.tags)
             transactions.append(transaction)
 
-        transaction_key_to_id = LedgerRepo.bulk_upsert_transactions(session, transactions)
+        transaction_key_to_id, inserted = LedgerRepo.bulk_upsert_transactions(session, transactions)
         entries = []
         active_legs = []
 
@@ -161,6 +169,7 @@ class LedgerService:
                 active_legs.append((tx_id, db_entry.account_id))
         LedgerRepo.delete_entries_in_transactions_not_in(session, list(transaction_key_to_id.values()), active_legs)
         LedgerRepo.bulk_upsert_entries(session, entries)
+        return inserted
 
     def create_or_update_simple_transactions(self, ledger_txs: list[SimpleLedgerTransaction]):
         transactions = [tx.to_dto() for tx in ledger_txs]
@@ -175,7 +184,7 @@ class LedgerService:
         existing = LedgerRepo.get_transaction_by_id(session, update_dto.id)
         if not existing:
             raise TransactionNotFoundException()
-        source = None if not existing else existing.tx_metadata.get("source")
+        source = None if not existing else existing.ledger_metadata.get("source")
         # We limit what we can update depending on the source
         if source in ["santander", "accrual", "energy"]:
             logging.warning("can not update transaction %s as source is %s", update_dto.id, source)
@@ -193,7 +202,6 @@ class LedgerService:
         key = LedgerService.compute_key(create_dto.transaction_datetime, create_dto.payee, create_dto.narration, amount)
         full_dto = TransactionDto(id=uuid.uuid4(), key=key, **create_dto.model_dump())
         self.create_or_update_transactions([full_dto])
-        session.commit()
         return self.get_transaction(full_dto.id)
 
     @staticmethod
@@ -207,7 +215,7 @@ class LedgerService:
             existing = LedgerRepo.get_transaction_by_id(session, tx_id)
             if not existing:
                 raise TransactionNotFoundException()
-            source = existing.tx_metadata.get("source")
+            source = existing.ledger_metadata.get("source")
             if source:
                 raise ImmutableTransactionException()
             LedgerService.delete_transactions(session, [tx_id])
@@ -233,3 +241,10 @@ class LedgerService:
         amount_str = f"{amount:.2f}"
         external_id_items = f"{date_str}-{payee}-{narration}-{amount_str}"
         return hashlib.md5(external_id_items.encode("utf-8")).hexdigest()
+
+    def _publish_new_transaction_event(self, tx_id: uuid.UUID):
+        logging.info("publishing transaction.created event %s", tx_id)
+        tx = self.get_transaction(tx_id)
+        assert tx
+        ch = self.rmq_connection.channel()
+        ch.basic_publish(EXCHANGE_TX_CREATED, "", tx.model_dump_json())

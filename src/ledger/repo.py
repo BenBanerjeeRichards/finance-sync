@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect
+from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect, literal_column
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session, defer
 import logging
@@ -78,7 +78,7 @@ class LedgerRepo:
         list[Transaction], ListTransactionCursor | None]:
         q = select(Transaction)
 
-        q = q.options(defer(Transaction.tx_metadata))
+        q = q.options(defer(Transaction.ledger_metadata))
         q = q.options(defer(Transaction.external_metadata))
         q = q.join(Transaction.entries).join(Entry.account)
 
@@ -96,7 +96,7 @@ class LedgerRepo:
 
     @staticmethod
     def find_all_by_metadata_by_date_desc(session: Session, key: str, value: str) -> list[Transaction]:
-        q = select(Transaction).where(Transaction.tx_metadata.contains({key: value})).order_by(
+        q = select(Transaction).where(Transaction.ledger_metadata.contains({key: value})).order_by(
             Transaction.transaction_datetime.desc(), Transaction.id.desc())
         return list(session.scalars(q).all())
 
@@ -190,14 +190,13 @@ class LedgerRepo:
         session.execute(st)
 
     @staticmethod
-    def ensure_ledger(session: Session, name: str):
-        st = insert(Ledger).values(name=name, id=uuid.uuid4()).on_conflict_do_nothing(index_elements=["name"])
-        session.execute(st)
-
-    @staticmethod
-    def bulk_upsert_transactions(session: Session, transactions: list[Transaction]) -> dict[str, UUID]:
+    def bulk_upsert_transactions(session: Session, transactions: list[Transaction]) -> tuple[dict[str, UUID], list[UUID]]:
         if not transactions:
-            return {}
+            return {},[]
+        keys_to_upsert = [tx.key for tx in transactions]
+        existing_q = select(Transaction.key).where(Transaction.key.in_(keys_to_upsert))
+        existing_keys = session.execute(existing_q).scalars().all()
+        new_keys = set(keys_to_upsert) - set(existing_keys)
 
         mapper = inspect(Transaction)
         data_to_upsert = [
@@ -222,7 +221,13 @@ class LedgerRepo:
             .returning(Transaction.id, Transaction.key)
         )
         res = session.execute(upsert_stmt, data_to_upsert)
-        return {row.key: row.id for row in res.all()}
+        result = res.all()
+
+        new_ids_q = select(Transaction.id).where(Transaction.key.in_(new_keys))
+        new_ids = session.execute(new_ids_q).scalars().all()
+
+        logging.info("upsert result: {}".format(new_ids))
+        return {row.key: row.id for row in result}, list(new_ids)
 
     @staticmethod
     def bulk_upsert_entries(session: Session, entries: list[Entry]):

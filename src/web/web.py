@@ -128,11 +128,10 @@ def create_fastapi() -> FastAPI:
     async def create_transaction(transaction_id: uuid.UUID, create: CreateTransactionDto):
         try:
             with Session.begin() as session:
-                tx = ledger_service.create_transaction(session, create)
+                ledger_service.create_transaction(session, create)
         except TransactionDoesNotBalanceException:
             raise HTTPException(status_code=404, detail="Transaction does not balance")
 
-        return tx.model_dump()
 
 
     @app.delete("/finance/transactions/{transaction_id}")

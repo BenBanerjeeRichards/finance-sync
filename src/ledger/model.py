@@ -22,6 +22,7 @@ class AccountType(str, PythonEnum):
     EQUITY = "equity"
     INCOME = "income"
 
+
 class Account(Base):
     """Represents a Beancount-style chart of accounts."""
 
@@ -44,6 +45,7 @@ class Account(Base):
         UniqueConstraint("name", "account_type", name="uq_name_and_type"),
     )
 
+
 class Transaction(Base):
     """A financial transaction holding metadata and linking multiple entries."""
 
@@ -65,11 +67,8 @@ class Transaction(Base):
         name="external_metadata",
         server_default=text("'{}'::jsonb")
     )
-    tx_metadata: Mapped[dict] = mapped_column(
-        JSONB,
-        name="metadata",
-        server_default=text("'{}'::jsonb")
-    )
+
+    ledger_metadata: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
 
     flagged: Mapped[bool] = mapped_column(default=False)
     tags: Mapped[list[str]] = mapped_column(
@@ -126,7 +125,7 @@ class MonzoImportIntegration(Base):
     # use monzo client id as unique constraint as it does not make sense to have duplicate importers
     client_id: Mapped[str] = mapped_column(unique=True)
     client_secret: Mapped[str] = mapped_column()
-    account_id: Mapped[str]= mapped_column()    # monzo account id
+    account_id: Mapped[str] = mapped_column()  # monzo account id
     access_token: Mapped[str | None] = mapped_column()
     refresh_token: Mapped[str | None] = mapped_column()
     # Datetime representing latest refresh success, if failure this becomes None
@@ -137,6 +136,7 @@ class MonzoImportIntegration(Base):
     default_income_account_id: Mapped[UUID | None] = mapped_column()
     # Default account id for expenses
     default_expense_account_id: Mapped[UUID | None] = mapped_column()
+
 
 class MonzoImportRule(Base):
     __tablename__ = "monzo_import_rule"
@@ -209,7 +209,8 @@ class PosterConfig(Base):
     enabled: Mapped[bool] = mapped_column(default=True)
     config: Mapped[dict] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
+                                                 onupdate=func.now())
 
     __table_args__ = (
         UniqueConstraint("type", "name", name="uq_poster_config_type_name"),
@@ -231,7 +232,6 @@ class GoCardlessImportRule(Base):
     account_id: Mapped[UUID] = mapped_column()
     payee: Mapped[str | None] = mapped_column()
     narration: Mapped[str | None] = mapped_column()
-
 
     credit_only: Mapped[bool] = mapped_column(default=False)
     debit_only: Mapped[bool] = mapped_column(default=False)

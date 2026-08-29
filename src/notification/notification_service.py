@@ -1,5 +1,7 @@
+from decimal import Decimal
+
 import dependencies
-from ledger.dto import TransactionDto, AccountType
+from ledger.dto import TransactionDto, AccountType, EntryDto
 from ledger.ledger_service import LedgerService
 from main import Session
 from notification.discord import DiscordClient
@@ -17,16 +19,20 @@ class NotificationService:
 
     def register_new_transaction(self, transaction: TransactionDto):
         with Session.begin() as session:
-            asset_amount = sum([e.amount for e in transaction.entries if e.account.type == AccountType.ASSET])
-            if abs(asset_amount) != transaction.absolute_amount():
-                logging.info("skipping registration of new notification for transaction %s as asset_amount is %s",
-                             transaction.id, asset_amount)
+            # Only care about card transactions which will have two legs
+            if len(transaction.entries) != 2:
+                logging.info("skipping notifying %s: > "), transaction.id
                 return
-            if not asset_amount:
-                logging.info("skipping registration of new notification for transaction %s as asset_amount is %s",
-                             transaction.id, asset_amount)
+            asset_entries: list[EntryDto] = [e for e in transaction.entries if e.account.type == AccountType.ASSET]
+            santander_amount = sum([x.amount for x in asset_entries if x.account.name == "Santander"])
+            if not santander_amount:
+                logging.info("skipping notifying %s: no santander amount "), transaction.id
                 return
-            context = NewTransactionNotification(transaction_id=str(transaction.id), amount=str(asset_amount),
+            if transaction.ledger_metadata.get("source") not in ["monzo", "santander"]:
+                logging.info("skipping non-monzo or santander notification: %s", transaction.id)
+                return
+
+            context = NewTransactionNotification(transaction_id=str(transaction.id), amount=str(santander_amount),
                                                  counterparty_name=transaction.payee or transaction.narrative)
             i = self.notification_repo.register_notification(session, context.idempotency_key(),
                                                              "NewTransactionNotification", context.model_dump())
@@ -45,13 +51,8 @@ class NotificationService:
                     logging.error("Unknown notification type %s", claim.type)
 
     def send_new_transaction_notification(self, context: NewTransactionNotification):
-        # make sure we are up to date
-        tx = self.ledger_service.get_transaction(uuid.UUID(context.transaction_id))
-        if not tx:
-            logging.error("Failed to get transaction with id %s", context.transaction_id)
-            return
-        asset_amount = sum([e.amount for e in tx.entries if e.account.type == AccountType.ASSET])
+        asset_amount = Decimal(context.amount)
         if asset_amount > 0:
-            self.discord_client.send_message(f"💸 Received {tx.absolute_amount()} from {tx.payee or tx.description}")
+            self.discord_client.send_message(f"💸 Received {asset_amount =} from {context.counterparty_name}")
         else:
-            self.discord_client.send_message(f"💵 Spent {tx.absolute_amount()} at {tx.payee or tx.description}")
+            self.discord_client.send_message(f"💵 Spent {asset_amount} at {context.counterparty_name}")
