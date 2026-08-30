@@ -8,7 +8,6 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 import dependencies
-from constants import EXCHANGE_TX_CREATED
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto, CreateTransactionDto, AccountType
 from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
@@ -247,4 +246,5 @@ class LedgerService:
         tx = self.get_transaction(tx_id)
         assert tx
         ch = self.rmq_connection.channel()
-        ch.basic_publish(EXCHANGE_TX_CREATED, "", tx.model_dump_json())
+        # ch.basic_publish(EXCHANGE_TX_CREATED, "", tx.model_dump_json())
+        # TODO

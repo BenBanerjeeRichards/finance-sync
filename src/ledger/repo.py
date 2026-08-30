@@ -192,6 +192,11 @@ class LedgerRepo:
     def bulk_upsert_transactions(session: Session, transactions: list[Transaction]) -> tuple[dict[str, UUID], list[UUID]]:
         if not transactions:
             return {},[]
+
+        for tx in transactions:
+            if not tx.group_id:
+                tx.group_id = tx.key
+
         keys_to_upsert = [tx.key for tx in transactions]
         existing_q = select(Transaction.key).where(Transaction.key.in_(keys_to_upsert))
         existing_keys = session.execute(existing_q).scalars().all()

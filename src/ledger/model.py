@@ -77,6 +77,11 @@ class Transaction(Base):
         default=list
     )
 
+    group_id: Mapped[str] = mapped_column()
+    # If superseded_by_group is set, then this item does not work part of the ledger as a different group of items
+    # has taken its place. This is used when subsequent posters modify prior entries
+    superseded_by_group: Mapped[str | None] = mapped_column()
+
     # Relationships
     entries: Mapped[list["Entry"]] = relationship(
         back_populates="transaction",

@@ -54,6 +54,8 @@ class TransactionDto(BaseModel):
     flagged: bool = False
     tags: list[str] = Field(default_factory=list)
     entries: list[EntryDto] = Field(default_factory=list)
+    group_id: str | None = Field(default_factory=dict)
+    superseded_by_group: str | None = Field(default_factory=dict)
 
     def absolute_amount(self) -> Decimal:
         return sum([e.amount for e in self.entries if e.amount > 0])
