@@ -1,3 +1,2 @@
-EXCHANGE_TX_UPDATED = "transaction.updated"
-EXCHANGE_TX_CREATED = "transaction.created"
+EXCHANGE_CARD_TRANSACTION_CREATED = "card-transaction.created"
 EXCHANGE_LEDGER_UPDATED = "beancount.ledger-updated"

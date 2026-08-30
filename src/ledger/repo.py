@@ -64,10 +64,6 @@ class LedgerRepo:
         return AccountDto.model_validate(res)
 
     @staticmethod
-    def get_ledgers(session) -> list[LedgerDto]:
-        return [LedgerDto.model_validate(l) for l in session.scalars(select(Ledger))]
-
-    @staticmethod
     def get_transaction_by_id(session: Session, id: uuid.UUID) -> Transaction | None:
         q = select(Transaction).where(Transaction.id == id)
         return session.execute(q).scalar_one_or_none()
@@ -158,10 +154,13 @@ class LedgerRepo:
         if filters.account_id:
             q = q.where(Account.id == filters.account_id)
         if filters.text_filter:
-            q = q.where(or_(
+            branches = [
                 Transaction.search_vector.op("%>")(filters.text_filter),
-                Transaction.key == filters.text_filter
-            ))
+                Transaction.key == filters.text_filter,
+            ]
+            if LedgerRepo.is_valid_uuid(filters.text_filter):
+                branches.append(Transaction.id == filters.text_filter)
+            q = q.where(or_(*branches))
         if filters.flagged:
             q = q.where(Transaction.flagged == filters.flagged)
         return q
@@ -263,3 +262,11 @@ class LedgerRepo:
         res = session.execute(cleanup)
         if res.rowcount > 0:
             logging.info("cleanup cleaned %s ledger entries", res.rowcount)
+
+    @staticmethod
+    def is_valid_uuid(value):
+        try:
+            uuid.UUID(str(value))
+            return True
+        except (ValueError, AttributeError, TypeError):
+            return False

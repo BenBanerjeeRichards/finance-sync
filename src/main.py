@@ -5,7 +5,7 @@ import uvicorn
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from constants import EXCHANGE_TX_CREATED, EXCHANGE_TX_UPDATED, EXCHANGE_LEDGER_UPDATED
+from constants import EXCHANGE_LEDGER_UPDATED, EXCHANGE_CARD_TRANSACTION_CREATED
 from model import Settings
 import os
 import logging
@@ -69,13 +69,12 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.queue_bind("update-ledger", "energy.synced", routing_key="")
 
     # pub/sub for transaction events
-    channel.exchange_declare(exchange=EXCHANGE_TX_CREATED, exchange_type="fanout")
-    channel.exchange_declare(exchange=EXCHANGE_TX_UPDATED, exchange_type="fanout")
+    channel.exchange_declare(exchange=EXCHANGE_CARD_TRANSACTION_CREATED, exchange_type="fanout")
     channel.exchange_declare(exchange=EXCHANGE_LEDGER_UPDATED, exchange_type="fanout")
 
     # For santander discord notifications
     channel.queue_declare(queue='transaction.notification', durable=True)
-    channel.queue_bind(exchange=EXCHANGE_TX_CREATED, queue='transaction.notification')
+    channel.queue_bind(exchange=EXCHANGE_CARD_TRANSACTION_CREATED, queue='card-transaction.notification')
 
     channel.basic_consume(queue="monzo-sync-transactions", on_message_callback=handler.on_monzo_sync_transactions,
                           auto_ack=True)
@@ -89,7 +88,7 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.basic_consume(queue="send-notifications",
                           on_message_callback=handler.on_send_notifications,
                           auto_ack=True)
-    channel.basic_consume(queue="transaction-notification",
+    channel.basic_consume(queue="card-transaction.notification",
                           on_message_callback=handler.on_notify_transaction,
                           auto_ack=True)
 
