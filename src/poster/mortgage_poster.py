@@ -126,6 +126,7 @@ class MortgagePoster(BasePoster):
                 primary = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
                                                             dt=primary_payment.transaction_datetime,
                                                             external_id=f"mortgage_primary_{primary_payment.key}",
+                                                            group_id=primary_payment.group_id,
                                                             payee=primary_payment.payee,
                                                             narration=primary_payment.narration,
                                                             principal_amount=primary_principal,
@@ -137,6 +138,7 @@ class MortgagePoster(BasePoster):
                     p_overpayment = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
                                                                       dt=primary_payment.transaction_datetime,
                                                                       external_id=f"mortgage_overpayment_{primary_payment.key}",
+                                                                      group_id=primary_payment.group_id,
                                                                       payee=primary_payment.payee,
                                                                       narration=primary_payment.narration,
                                                                       principal_amount=primary_overpayment_amount,
@@ -150,6 +152,7 @@ class MortgagePoster(BasePoster):
                     overpayment = self._create_mortgage_transaction(credit_account_id=acc_credit_id,
                                                                     dt=dedicated_overpayment.transaction_datetime,
                                                                     external_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
+                                                                    group_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
                                                                     payee=dedicated_overpayment.payee,
                                                                     narration=dedicated_overpayment.narration,
                                                                     principal_amount=dedicated_overpayment.absolute_amount(),
@@ -163,7 +166,7 @@ class MortgagePoster(BasePoster):
             ledger_service.delete_transactions(session, processed_ids)
 
     def _create_mortgage_transaction(self, credit_account_id: uuid.UUID, dt: datetime.datetime, external_id: str,
-                                     payee: str, narration: str,
+                                     group_id: str, payee: str, narration: str,
                                      principal_amount: Decimal, interest_amount: Decimal,
                                      tags: list[str] | None = None) -> TransactionDto:
         tags = tags or []
@@ -171,7 +174,7 @@ class MortgagePoster(BasePoster):
                                      narration=narration, external_metadata={}, ledger_metadata={
                 "mortgage": "computed",
                 "source": "mortgage"
-            }, entries=[], tags=tags)
+            }, entries=[], tags=tags, group_id=group_id)
 
         interest_entry = EntryDto(id=uuid.uuid4(), transaction_id=transaction.id, amount=interest_amount,
                                   local_amount=interest_amount, local_currency="GBP",
