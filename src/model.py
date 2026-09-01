@@ -205,6 +205,7 @@ class SimpleLedgerTransaction(BaseModel):
     source: str = ""
     local_amount: Decimal | None = None
     local_currency: str | None = None
+    group_id: str | None = None
 
     def to_dto(self) -> TransactionDto:
         if not self.tx_datetime:
@@ -216,7 +217,7 @@ class SimpleLedgerTransaction(BaseModel):
                                      transaction_datetime=dt,
                                      key=self.external_id, payee=self.payee, narration=self.description,
                                      external_metadata=self.metadata, ledger_metadata=self.ledger_metadata,
-                                     flagged=self.flagged, tags=self.tags, entries=[])
+                                     flagged=self.flagged, tags=self.tags, entries=[], group_id=self.group_id or self.external_id)
 
         local_amount = self.local_amount
         local_currency = self.local_currency

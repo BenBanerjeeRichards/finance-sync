@@ -125,7 +125,7 @@ class MortgagePoster(BasePoster):
 
                 primary = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
                                                             dt=primary_payment.transaction_datetime,
-                                                            external_id=f"{primary_payment.key}",
+                                                            external_id=f"mortgage_primary_{primary_payment.key}",
                                                             payee=primary_payment.payee,
                                                             narration=primary_payment.narration,
                                                             principal_amount=primary_principal,

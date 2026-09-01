@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, defer
 import logging
 
 from ledger.model import Account, Transaction, Entry, AccountType
-from ledger.dto import AccountDto, LedgerDto, BalancesDto, BalanceEntryDto, PeriodicBalancesDto, PeriodicBalanceEntryDto
+from ledger.dto import AccountDto, BalancesDto, BalanceEntryDto, PeriodicBalancesDto, PeriodicBalanceEntryDto
 import base64
 
 
@@ -19,6 +19,7 @@ class TransactionFilters(BaseModel):
     created_lt: datetime | None = None
     account_id: uuid.UUID | None = None
     key: str | None = None
+    group_id: str | None = None
     tags: list[str] | None = None
     payee: str | None = None
     text_filter: str | None = None  # search over trigrams {payee, tags, narration}
@@ -141,12 +142,15 @@ class LedgerRepo:
     @staticmethod
     def _get_transaction_filter_query(q: Select[tuple[Transaction]], filters: TransactionFilters) -> Select[
         tuple[Transaction]]:
+        q = q.where(Transaction.superseded_by_group == None)
         if filters.created_gt:
             q = q.where(Transaction.transaction_datetime >= filters.created_gt)
         if filters.created_lt:
             q = q.where(Transaction.transaction_datetime <= filters.created_lt)
         if filters.key:
             q = q.where(Transaction.key == filters.key)
+        if filters.group_id:
+            q = q.where(Transaction.group_id == filters.group_id)
         if filters.tags:
             q = q.where(Transaction.tags.contains(filters.tags))
         if filters.payee:
@@ -157,6 +161,7 @@ class LedgerRepo:
             branches = [
                 Transaction.search_vector.op("%>")(filters.text_filter),
                 Transaction.key == filters.text_filter,
+                Transaction.group_id == filters.text_filter,
             ]
             if LedgerRepo.is_valid_uuid(filters.text_filter):
                 branches.append(Transaction.id == filters.text_filter)

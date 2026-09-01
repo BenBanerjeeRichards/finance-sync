@@ -14,6 +14,7 @@ class GetTransactionsParams(BaseModel):
     created_lt: datetime.datetime | None = None
     account_id: UUID | None = None
     key: str | None = None
+    group_id: str | None = None
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None
@@ -27,6 +28,7 @@ class GetBalanceParams(BaseModel):
     created_lt: datetime.datetime | None = None
     account_id: UUID | None = None
     key: str | None = None
+    group_id: str | None = None
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None
@@ -39,6 +41,7 @@ class GetBalanceHistoryParams(BaseModel):
     created_lt: datetime.datetime | None = None
     account_id: UUID | None = None
     key: str | None = None
+    group_id: str | None = None
     tags: list[str] = Field(Query(default=[]))
     text_filter: str | None = None
     payee: str | None = None

@@ -81,7 +81,7 @@ class AccrualsPoster(BasePoster):
                                                  rule.metadata_key: VALUE_LIABILITY,
                                                  "source": "accrual"
                                              }, source="accrual", amount=abs(liability_amounts[i]),
-                                             metadata={})
+                                             metadata={}, group_id=settlement.key)
                 settlement_transactions.append(tx)
 
         self.ledger_service.create_or_update_simple_transactions(settlement_transactions)
@@ -114,6 +114,7 @@ class AccrualsPoster(BasePoster):
         logging.info("liability %s: computing provisional liabilities for month %s (amount %s)", rule.name,
                      provisional_liability_months, estimated_liability)
         for i, liability_date in enumerate(provisional_liability_months):
+            group = f"accrual_provisional_{most_recent_settlement.key}"
             liability_key = f"provisional-{most_recent_settlement.key}-{liability_date.isoformat()}"
             tx = SimpleLedgerTransaction(external_id=liability_key, tx_date=liability_date,
                                          credit_account_id=rule.liability_account, debit_account_id=rule.expense_account,
@@ -123,7 +124,7 @@ class AccrualsPoster(BasePoster):
                                          ledger_metadata={
                                              rule.metadata_key: VALUE_PROVISIONAL_LIABILITY,
                                              "source": "accrual"
-                                         }, source="accrual", amount=abs(estimated_liability))
+                                         }, source="accrual", amount=abs(estimated_liability), group_id=group)
             provisional_transactions.append(tx)
 
         # Find any provisional liabilities that exist in journal but not created here

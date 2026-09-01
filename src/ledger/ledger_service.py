@@ -150,7 +150,7 @@ class LedgerService:
                                       transaction_datetime=tx.transaction_datetime,
                                       key=tx.key, payee=tx.payee, narration=tx.narration,
                                       external_metadata=tx.external_metadata, ledger_metadata=tx.ledger_metadata,
-                                      flagged=tx.flagged, tags=tx.tags)
+                                      flagged=tx.flagged, tags=tx.tags, group_id=tx.group_id)
             transactions.append(transaction)
 
         transaction_key_to_id, inserted = LedgerRepo.bulk_upsert_transactions(session, transactions)
