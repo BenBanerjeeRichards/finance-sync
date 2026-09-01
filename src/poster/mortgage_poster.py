@@ -84,7 +84,6 @@ class MortgagePoster(BasePoster):
             LedgerService.delete_transactions(session, to_delete_ids)
 
             payment_history = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "pending")
-            processed_ids = []
             for month in dates:
                 logging.info("processing mortgage transaction for month %s", month)
                 month_payments = [tx for tx in payment_history if
@@ -133,7 +132,7 @@ class MortgagePoster(BasePoster):
                                                             interest_amount=interest_amount,
                                                             tags=["committed"])
                 ledger_service.create_or_update_transactions_with_sesssion(session, [primary])
-                processed_ids.append(primary_payment.id)
+                LedgerService.supersede_transaction(session, primary_payment.id, primary.group_id)
                 if primary_overpayment_amount > Decimal("0"):
                     p_overpayment = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
                                                                       dt=primary_payment.transaction_datetime,
@@ -161,9 +160,7 @@ class MortgagePoster(BasePoster):
 
                     ledger_service.create_or_update_transactions_with_sesssion(session, [overpayment])
                     session.flush()
-                    processed_ids.append(dedicated_overpayment.id)
-            logging.info("deleting %s pending transactions now processed", len(processed_ids))
-            ledger_service.delete_transactions(session, processed_ids)
+                    LedgerService.supersede_transaction(session, dedicated_overpayment.id, overpayment.group_id)
 
     def _create_mortgage_transaction(self, credit_account_id: uuid.UUID, dt: datetime.datetime, external_id: str,
                                      group_id: str, payee: str, narration: str,

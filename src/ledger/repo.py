@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
-from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect, literal_column
+from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect, literal_column, update
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session, defer
 import logging
@@ -68,6 +68,15 @@ class LedgerRepo:
     def get_transaction_by_id(session: Session, id: uuid.UUID) -> Transaction | None:
         q = select(Transaction).where(Transaction.id == id)
         return session.execute(q).scalar_one_or_none()
+
+    @staticmethod
+    def supersede_transaction(session, tx_id: uuid.UUID, group_id: str):
+        # TODO we should validate supersede_group_id
+        q = update(Transaction).where(Transaction.id == tx_id).values(superseded_by_group=group_id)
+        res = session.execute(q)
+        if res.rowcount != 1:
+            raise ValueError(f"Failed to find transaction to update by id: {tx_id}")
+
 
     @staticmethod
     def get_transactions(session: Session, filters: TransactionFilters,

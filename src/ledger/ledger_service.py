@@ -225,6 +225,10 @@ class LedgerService:
         session.execute(q)
 
     @staticmethod
+    def supersede_transaction(session, tx_id: uuid.UUID, supersede_group_id: str):
+        LedgerRepo.supersede_transaction(session, tx_id, supersede_group_id)
+
+    @staticmethod
     def delete_transactions_by_key(session, ids: list[str]):
         q = delete(Transaction).where(Transaction.key.in_(ids))
         session.execute(q)
