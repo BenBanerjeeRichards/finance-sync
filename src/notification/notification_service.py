@@ -53,6 +53,6 @@ class NotificationService:
     def send_new_transaction_notification(self, context: NewTransactionNotification):
         asset_amount = Decimal(context.amount)
         if asset_amount > 0:
-            self.discord_client.send_message(f"💸 Received {asset_amount =} from {context.counterparty_name}")
+            self.discord_client.send_message(f"💸 Received £{asset_amount} from {context.counterparty_name}")
         else:
-            self.discord_client.send_message(f"💵 Spent {asset_amount} at {context.counterparty_name}")
+            self.discord_client.send_message(f"💵 Spent £{abs(asset_amount)} at {context.counterparty_name}")

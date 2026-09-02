@@ -27,11 +27,11 @@ class MonzoPoster(BasePoster):
         monzo_transactions = dependencies.get_transactions_store().load_list(MONZO_TX_FILE, Transaction)
         ledger_transactions = [self.translate_to_ledger(tx) for tx in monzo_transactions if
                                tx.created > "2024-04"]
-        from ledger.ledger_service import LedgerService
-
-        ledger = LedgerService(dependencies.get_config())
+        ledger_service = dependencies.get_ledger_service()
         logging.info("writing monzo to db (%s)", len(ledger_transactions))
-        ledger.create_or_update_simple_transactions(ledger_transactions)
+        new_txs = ledger_service.create_or_update_simple_transactions(ledger_transactions)
+        [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
+
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:
         cash_account = self.import_config.cash_account_id

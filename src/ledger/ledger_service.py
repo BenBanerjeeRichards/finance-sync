@@ -8,6 +8,7 @@ from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
 
 import dependencies
+from constants import EXCHANGE_CARD_TRANSACTION_CREATED
 from ledger.dto import TransactionDto, TransactionListDto, TransactionListResultDto, AccountDto, BalancesDto, \
     PeriodicBalancesDto, CreateTransactionDto, AccountType
 from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
@@ -125,13 +126,9 @@ class LedgerService:
         with Session.begin() as session:
             return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
-    def create_or_update_transactions(self, txs: list[TransactionDto]):
+    def create_or_update_transactions(self, txs: list[TransactionDto]) -> list[uuid.UUID]:
         with Session.begin() as session:
-            inserted = self.create_or_update_transactions_with_sesssion(session, txs)
-        # publish event only after session commits
-        if inserted:
-            logging.info("new transactions %s", inserted)
-        [self._publish_new_transaction_event(tx_id) for tx_id in inserted]
+            return self.create_or_update_transactions_with_sesssion(session, txs)
 
 
     def create_or_update_transactions_with_sesssion(self, session, txs: list[TransactionDto]) -> list[uuid.UUID]:
@@ -170,9 +167,9 @@ class LedgerService:
         LedgerRepo.bulk_upsert_entries(session, entries)
         return inserted
 
-    def create_or_update_simple_transactions(self, ledger_txs: list[SimpleLedgerTransaction]):
+    def create_or_update_simple_transactions(self, ledger_txs: list[SimpleLedgerTransaction]) -> list[uuid.UUID]:
         transactions = [tx.to_dto() for tx in ledger_txs]
-        self.create_or_update_transactions(transactions)
+        return self.create_or_update_transactions(transactions)
 
     def update_transaction(self, session, update_dto: TransactionDto) -> TransactionDto:
         """
@@ -245,10 +242,9 @@ class LedgerService:
         external_id_items = f"{date_str}-{payee}-{narration}-{amount_str}"
         return hashlib.md5(external_id_items.encode("utf-8")).hexdigest()
 
-    def _publish_new_transaction_event(self, tx_id: uuid.UUID):
-        logging.info("publishing transaction.created event %s", tx_id)
+    def publish_new_card_transaction_event(self, tx_id: uuid.UUID):
+        logging.info("publishing card-transaction.created event %s", tx_id)
         tx = self.get_transaction(tx_id)
         assert tx
         ch = self.rmq_connection.channel()
-        # ch.basic_publish(EXCHANGE_TX_CREATED, "", tx.model_dump_json())
-        # TODO
+        ch.basic_publish(EXCHANGE_CARD_TRANSACTION_CREATED, "", tx.model_dump_json())

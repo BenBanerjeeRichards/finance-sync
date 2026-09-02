@@ -63,7 +63,7 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.queue_declare(queue="monzo-refresh-token", durable=True)
     channel.queue_declare(queue="update-ledger", durable=True)
     channel.queue_declare(queue="send-notifications", durable=True)
-    channel.queue_declare(queue="transaction-notification", durable=True)
+    channel.queue_declare(queue="card-transaction.notification", durable=True)
 
     # bit lazy... just subscribe from energy sync straight to the update-ledger to force energy to be updated
     channel.queue_bind("update-ledger", "energy.synced", routing_key="")
@@ -73,8 +73,7 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.exchange_declare(exchange=EXCHANGE_LEDGER_UPDATED, exchange_type="fanout")
 
     # For santander discord notifications
-    channel.queue_declare(queue='transaction.notification', durable=True)
-    # channel.queue_bind(exchange=EXCHANGE_CARD_TRANSACTION_CREATED, queue='card-transaction.notification')
+    channel.queue_bind(exchange=EXCHANGE_CARD_TRANSACTION_CREATED, queue='card-transaction.notification')
 
     channel.basic_consume(queue="monzo-sync-transactions", on_message_callback=handler.on_monzo_sync_transactions,
                           auto_ack=True)
@@ -88,9 +87,9 @@ def listen_for_updates(channel, handler: "Handler"):
     channel.basic_consume(queue="send-notifications",
                           on_message_callback=handler.on_send_notifications,
                           auto_ack=True)
-    # channel.basic_consume(queue="card-transaction.notification",
-    #                       on_message_callback=handler.on_notify_transaction,
-    #                       auto_ack=True)
+    channel.basic_consume(queue="card-transaction.notification",
+                          on_message_callback=handler.on_notify_transaction,
+                          auto_ack=True)
 
     logging.info("Listening for messages")
     channel.start_consuming()

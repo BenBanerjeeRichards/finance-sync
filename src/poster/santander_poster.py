@@ -22,7 +22,9 @@ class SantanderPoster(BasePoster):
         mapped_transactions = [self.translate_to_ledger(from_gc(tx)) for tx in santander_transactions]
         ledger_transactions = [tx for tx in mapped_transactions if tx]
         logging.info("writing santander to db")
-        dependencies.get_ledger_service().create_or_update_simple_transactions(ledger_transactions)
+        ledger_service = dependencies.get_ledger_service()
+        new_txs = ledger_service.create_or_update_simple_transactions(ledger_transactions)
+        [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
 
     def translate_to_ledger(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
         cash_account = self.import_config.cash_account_id
