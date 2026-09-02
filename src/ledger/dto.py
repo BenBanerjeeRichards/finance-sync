@@ -50,7 +50,7 @@ class TransactionDto(BaseModel):
     payee: str | None = None
     narration: str | None = None
     external_metadata: dict = Field(default_factory=dict)
-    ledger_metadata: dict =  Field(default_factory=dict)
+    ledger_metadata: dict = Field(default_factory=dict)
     flagged: bool = False
     tags: list[str] = Field(default_factory=list)
     entries: list[EntryDto] = Field(default_factory=list)
@@ -59,6 +59,7 @@ class TransactionDto(BaseModel):
 
     def absolute_amount(self) -> Decimal:
         return sum([e.amount for e in self.entries if e.amount > 0])
+
 
 class CreateTransactionDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -78,6 +79,7 @@ class TransactionListAccountDto(BaseModel):
     name: str
 
 
+
 class TransactionListEntryDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -86,6 +88,16 @@ class TransactionListEntryDto(BaseModel):
     local_amount: Decimal
     local_currency: str
     account: TransactionListAccountDto
+
+class MerchantMetadataDto(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    logo_url: str | None = None
+
+
+class ListMetadataDto(BaseModel):
+    # get monzo url
+    model_config = ConfigDict(from_attributes=True)
+    merchant: MerchantMetadataDto | None = None
 
 
 class TransactionListDto(BaseModel):
@@ -99,6 +111,7 @@ class TransactionListDto(BaseModel):
     flagged: bool = False
     tags: list[str] = Field(default_factory=list)
     entries: list[TransactionListEntryDto] = Field(default_factory=list)
+    external_metadata: ListMetadataDto | None
 
 
 class TransactionListResultDto(BaseModel):
@@ -122,6 +135,7 @@ class PeriodicBalanceEntryDto(BaseModel):
     account_id: uuid.UUID
     period: datetime
     amount: Decimal
+
 
 class PeriodicBalancesDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
