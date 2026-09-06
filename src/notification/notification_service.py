@@ -1,3 +1,4 @@
+import uuid
 from decimal import Decimal
 
 import dependencies
@@ -5,9 +6,8 @@ from ledger.dto import TransactionDto, AccountType, EntryDto
 from ledger.ledger_service import LedgerService
 from main import Session
 from notification.discord import DiscordClient
-from notification.model import NewTransactionNotification
+from notification.model import NewTransactionNotification, ExpiringConnectionNotification
 import logging
-import uuid
 
 
 class NotificationService:
@@ -34,9 +34,15 @@ class NotificationService:
 
             context = NewTransactionNotification(transaction_id=str(transaction.id), amount=str(santander_amount),
                                                  counterparty_name=transaction.payee or transaction.narrative)
-            i = self.notification_repo.register_notification(session, context.idempotency_key(),
-                                                             "NewTransactionNotification", context.model_dump())
-            logging.info("Registered notification with id %s key %s", i, context.idempotency_key())
+            self.notification_repo.register_notification(session, context.idempotency_key(),
+                                                         "NewTransactionNotification", context.model_dump())
+
+    def register_santander_expiring(self, connection_id: uuid.UUID, reauth_link: str, expires_in_days: int) -> None:
+        with Session.begin() as session:
+            context = ExpiringConnectionNotification(name="Santander", reauth_link=reauth_link,
+                                                     connection_id=str(connection_id), expires_in_days=expires_in_days)
+            self.notification_repo.register_notification(session, context.idempotency_key(),
+                                                         "ExpiringConnection", context.model_dump())
 
     def send_notifications(self):
         for i in range(10):  # limit per batch
@@ -47,6 +53,9 @@ class NotificationService:
                 if claim.type == "NewTransactionNotification":
                     ctx = NewTransactionNotification(**claim.context)
                     self.send_new_transaction_notification(ctx)
+                elif claim.type == "ExpiringConnection":
+                    ctx = ExpiringConnectionNotification(**claim.context)
+                    self.send_expiring_connection_notification(ctx)
                 else:
                     logging.error("Unknown notification type %s", claim.type)
 
@@ -56,3 +65,10 @@ class NotificationService:
             self.discord_client.send_message(f"💸 Received £{asset_amount} from {context.counterparty_name}")
         else:
             self.discord_client.send_message(f"💵 Spent £{abs(asset_amount)} at {context.counterparty_name}")
+
+
+    def send_expiring_connection_notification(self, context: ExpiringConnectionNotification):
+        message = f"⚠️ {context.name} connection expires {"soon" if not context.expires_in_days else f"in {context.expires_in_days} days"}"
+        if context.reauth_link:
+            message += ". Reauth: " + context.reauth_link
+        self.discord_client.send_message(message)

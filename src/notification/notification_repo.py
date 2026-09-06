@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ledger.model import Notification
 
+import logging
 
 class NotificationRepo:
 
@@ -15,7 +16,7 @@ class NotificationRepo:
         pass
 
     def register_notification(self, session: Session, key: str,
-                              type: Literal["NewTransactionNotification"],
+                              type: Literal["NewTransactionNotification", "ExpiringConnection"],
                               context: dict[str, str]) -> uuid.UUID:
         # Silently does nothing if key already exists
         stmt = insert(Notification).values(id=uuid.uuid4(), key=key, context=context, type=type)
@@ -24,6 +25,7 @@ class NotificationRepo:
         q = select(Notification).where(Notification.key == key)
         item = session.execute(q).scalar_one_or_none()
         assert item
+        logging.info("Registered notification key %s", key)
         return item.id
 
     def claim_next_notification(self, session: Session) -> Notification | None:

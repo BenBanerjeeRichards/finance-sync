@@ -1,3 +1,4 @@
+import datetime
 import logging
 import time
 
@@ -62,3 +63,16 @@ def run_posters() -> None:
             logging.exception("Failed to run poster %s", poster.__class__.__name__)
         end = time.time()
         logging.info("Poster %s ran for %s ms", poster.__class__.__name__, int((end - start) * 1000))
+
+    if santander_config:
+        check_santander_notify(santander_config)
+
+def check_santander_notify(santander_config: GcImportIntegrationDto):
+    cfg = dependencies.get_config()
+    now = datetime.datetime.now()
+    diff = (santander_config.requisition_expires_at - now).days
+    diff = 0 if diff < 0 else int(diff)
+    if diff <= 7:
+        notifier = dependencies.get_notification_service()
+        notifier.register_santander_expiring(santander_config.id, cfg.gocardless.startUri, diff)
+

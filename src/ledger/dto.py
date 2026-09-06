@@ -15,6 +15,15 @@ class AccountType(str, Enum):
     INCOME = "income"
 
 
+class BudgetClass(str, Enum):
+    SPEND = "spend"
+    INVESTING = "investing"
+    DEBT_PAYMENT = "debt_payment"
+    TRANSFER = "transfer"
+    SETTLEMENT = "settlement"
+    INCOME = "income"
+
+
 class LedgerDto(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

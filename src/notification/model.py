@@ -1,4 +1,5 @@
 import abc
+import datetime
 import uuid
 from abc import ABC
 from decimal import Decimal
@@ -22,3 +23,17 @@ class NewTransactionNotification(BaseNotificationContext):
     def idempotency_key(self) -> str:
         # Only send a single notification
         return f"Type#NewTransaction#TranscationId#{self.transaction_id}"
+
+
+class ExpiringConnectionNotification(BaseNotificationContext):
+    kind: str = "ExpiringConnection"
+    name: str
+    connection_id: str
+    expires_in_days: int | None = None
+    reauth_link: str | None = None
+
+
+    def idempotency_key(self) -> str:
+        # Notify each day
+        now = datetime.datetime.now()
+        return f"Type#ExpiringConnection#ConnectionId#{self.connection_id}#Date#{now.date().isoformat()}"

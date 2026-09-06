@@ -84,12 +84,9 @@ class Handler:
 
     @rmq_handler()
     def on_santander_sync_transactions(self):
-        config = dependencies.get_config()
         santander_importer = dependencies.get_santander_importer()
         santander_importer.import_transactions()
-        age_days = santander_importer.update_expires_dates()
-        if age_days >= config.gocardless.notifyOlderThan:
-            dependencies.get_notifier().notify_expiring("GoCardless", config.gocardless.startUri, 90 - age_days)
+        santander_importer.update_expires_dates()
         run_posters()
 
     @rmq_handler()

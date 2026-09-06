@@ -8,3 +8,4 @@ Makefile
 __pycache__
 .DS_Store
 test.txt
+*.md
