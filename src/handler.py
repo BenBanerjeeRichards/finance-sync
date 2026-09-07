@@ -6,6 +6,8 @@ from pydantic import BaseModel
 import logging
 
 import dependencies
+from db import DBSession
+from importer.import_service import ImportService
 from ledger.dto import TransactionDto
 from poster.poster import run_posters
 from importer.monzo_import import MonzoImporter
@@ -72,11 +74,10 @@ class Handler:
 
     @rmq_handler()
     def on_monzo_refresh_token(self):
-        from importer.import_service import ImportService
-
         logging.info("Refreshing monzo token")
         access, refresh = dependencies.get_monzo_client().get_access_token()
-        ImportService.update_monzo_tokens(dependencies.get_settings().monzo_client_id, access, refresh)
+        with DBSession.begin() as session:
+            ImportService.update_monzo_tokens(session, dependencies.get_settings().monzo_client_id, access, refresh)
 
     @rmq_handler()
     def on_update_ledger(self):
@@ -96,4 +97,5 @@ class Handler:
     @rmq_handler(TransactionDto)
     def on_notify_transaction(self, tx: TransactionDto):
         logging.info("got new transaction.created %s", tx.model_dump_json())
-        self.notifier.register_new_transaction(tx)
+        with DBSession.begin() as session:
+            self.notifier.register_new_transaction(session, tx)

@@ -4,6 +4,7 @@ import minio
 import pika
 import yaml
 
+from db import DBSession
 from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 from importer.import_service import ImportService
@@ -71,7 +72,8 @@ def get_gc_client() -> GoCardlessClient:
 
 def _get_monzo_tokens() -> tuple[str, str]:
     settings = get_settings()
-    cfg = ImportService.get_monzo_config(settings.monzo_client_id)
+    with DBSession.begin() as session:
+        cfg = ImportService.get_monzo_config(session, settings.monzo_client_id)
     return cfg.access_token, cfg.refresh_token
 
 

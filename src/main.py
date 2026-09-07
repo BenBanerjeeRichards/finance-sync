@@ -20,15 +20,6 @@ logging.basicConfig(
 )
 # logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
-# sqlA module level constants
-
-engine = create_engine(
-    os.environ["PSQL_CONNECTION_STRING"],
-    executemany_mode="values_plus_batch",
-    executemany_batch_page_size=1000,
-)
-Session = sessionmaker(engine)
-
 
 def load_settings() -> Settings:
     rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]

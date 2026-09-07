@@ -6,7 +6,7 @@ import dependencies
 from ledger.dto import EntryDto, AccountDto, AccountType, TransactionDto
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
-from main import Session
+from db import DBSession
 from model import MortgageConfig
 from poster.base_poster import BasePoster
 import logging
@@ -74,7 +74,7 @@ class MortgagePoster(BasePoster):
             dates.append(current)
             current += relativedelta(months=1)
 
-        with Session.begin() as session:
+        with DBSession.begin() as session:
             # First delete all computed items so we can start with a clean slate
             existing_computed = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "computed")
             # leave alone the computed ones on manually created payments otherwise we loose them
@@ -199,7 +199,7 @@ class MortgagePoster(BasePoster):
                                          created_lt=datetime.datetime.combine(dt, datetime.time.min,
                                                                               tzinfo=datetime.timezone.utc))
 
-        balances = LedgerService.get_balance_with_session(session, bal_filters, account_types=[AccountType.LIABILITY.value]).balances
+        balances = LedgerService.get_balance(session, bal_filters, account_types=[AccountType.LIABILITY.value]).balances
         filtered = [b for b in balances if b.account_id == liability_account]
         if not filtered:
             return None

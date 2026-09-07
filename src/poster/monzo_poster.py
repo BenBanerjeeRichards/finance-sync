@@ -1,6 +1,7 @@
 import logging
 
 import dependencies
+from db import DBSession
 from poster.base_poster import BasePoster
 from model import *
 from model import Transaction as MonzoTransaction
@@ -21,7 +22,8 @@ class MonzoPoster(BasePoster):
 
     def __init__(self, import_config: MonzoImportIntegrationDto) -> None:
         self.import_config = import_config
-        self.import_rules = dependencies.get_import_service().get_monzo_import_rules(import_config.id)
+        with DBSession.begin() as session:
+            self.import_rules = dependencies.get_import_service().get_monzo_import_rules(session, import_config.id)
 
     def run(self):
         monzo_transactions = dependencies.get_transactions_store().load_list(MONZO_TX_FILE, Transaction)

@@ -12,7 +12,7 @@ from model import SimpleLedgerTransaction, EnergyConfig
 from poster.base_poster import BasePoster
 from poster.poster_config_service import PosterConfigService
 from ledger.ledger_service import LedgerService
-from main import Session
+from db import DBSession
 import uuid
 
 

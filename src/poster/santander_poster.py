@@ -1,6 +1,7 @@
 from operator import abs
 
 import dependencies
+from db import DBSession
 from importer.import_service import GcImportIntegrationDto, ImportService, GcImportRuleDto
 from model import *
 
@@ -15,7 +16,8 @@ class SantanderPoster(BasePoster):
 
     def __init__(self, config: GcImportIntegrationDto):
         self.import_config = config
-        self.import_rules = ImportService.get_gc_import_rules(config.id)
+        with DBSession.begin() as session:
+            self.import_rules = ImportService.get_gc_import_rules(session, config.id)
 
     def run(self):
         santander_transactions = dependencies.get_transactions_store().load(SANTANDER_TX_FILE, SantanderTransactions).transactions

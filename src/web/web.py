@@ -15,7 +15,7 @@ from ledger.dto import TransactionDto, CreateTransactionDto
 from ledger.ledger_service import ImmutableTransactionException, TransactionNotFoundException, \
     TransactionDoesNotBalanceException, LedgerService, AccountNotFoundException, DuplicateAccountException
 from ledger.repo import TransactionFilters
-from main import Session
+from db import get_db_session
 from model import MonzoSyncMessage
 from poster.poster_config_service import (
     PosterConfigService,
@@ -61,10 +61,10 @@ def create_fastapi() -> FastAPI:
         return templates.TemplateResponse("success.html", {"request": request})
 
     @app.get("/finance/monzo_redirect")
-    async def monzo_redirect(request: Request):
+    async def monzo_redirect(request: Request, session=Depends(get_db_session)):
         params = dict(request.query_params)
         access, refresh = dependencies.get_monzo_client().exchange_code(params["code"])
-        ImportService.update_monzo_tokens(params["state"], access, refresh)
+        ImportService.update_monzo_tokens(session, params["state"], access, refresh)
         return templates.TemplateResponse("success.html", {"request": request})
 
     @app.post("/finance/monzo_partial_sync")
@@ -96,24 +96,23 @@ def create_fastapi() -> FastAPI:
 
 
     @app.get("/finance/transactions")
-    async def get_transactions(params: GetTransactionsParams = Depends()):
+    async def get_transactions(params: GetTransactionsParams = Depends(), session=Depends(get_db_session)):
         filters = TransactionFilters(**params.model_dump())
-        txs = ledger_service.get_transactions(filters, params.cursor, params.count)
+        txs = ledger_service.get_transactions(session, filters, params.cursor, params.count)
         return txs.model_dump()
 
     @app.get("/finance/transactions/{transaction_id}")
-    async def get_transaction(transaction_id: uuid.UUID):
-        tx = ledger_service.get_transaction(transaction_id)
+    async def get_transaction(transaction_id: uuid.UUID, session=Depends(get_db_session)):
+        tx = ledger_service.get_transaction(session, transaction_id)
         if not tx:
             raise HTTPException(status_code=404, detail="Transaction not found")
         return tx.model_dump()
 
 
     @app.put("/finance/transactions/{transaction_id}")
-    async def update_transaction(transaction_id: uuid.UUID, update: TransactionDto):
+    async def update_transaction(transaction_id: uuid.UUID, update: TransactionDto, session=Depends(get_db_session)):
         try:
-            with Session.begin() as session:
-                tx = ledger_service.update_transaction(session, update)
+            tx = ledger_service.update_transaction(session, update)
         except ImmutableTransactionException:
             raise HTTPException(status_code=404, detail="Can not update transaction")
         except TransactionNotFoundException:
@@ -125,19 +124,18 @@ def create_fastapi() -> FastAPI:
 
 
     @app.post("/finance/transactions/{transaction_id}")
-    async def create_transaction(transaction_id: uuid.UUID, create: CreateTransactionDto):
+    async def create_transaction(transaction_id: uuid.UUID, create: CreateTransactionDto, session=Depends(get_db_session)):
         try:
-            with Session.begin() as session:
-                ledger_service.create_transaction(session, create)
+            ledger_service.create_transaction(session, create)
         except TransactionDoesNotBalanceException:
             raise HTTPException(status_code=404, detail="Transaction does not balance")
 
 
 
     @app.delete("/finance/transactions/{transaction_id}")
-    async def delete_transaction(transaction_id: uuid.UUID):
+    async def delete_transaction(transaction_id: uuid.UUID, session=Depends(get_db_session)):
         try:
-            LedgerService.safe_delete_transaction(transaction_id)
+            LedgerService.safe_delete_transaction(session, transaction_id)
         except ImmutableTransactionException:
             raise HTTPException(status_code=404, detail="Can not update transaction")
         except TransactionNotFoundException:
@@ -146,31 +144,31 @@ def create_fastapi() -> FastAPI:
 
 
     @app.get("/finance/payee")
-    async def get_payee(params: GetPayeeParams = Depends()):
+    async def get_payee(params: GetPayeeParams = Depends(), session=Depends(get_db_session)):
         filters = GetPayeeParams(**params.model_dump())
-        payees =  ledger_service.get_payees(filters.filter)
+        payees = ledger_service.get_payees(session, filters.filter)
         return {
             "payees": payees
         }
 
     @app.get("/finance/account")
-    async def get_accounts():
+    async def get_accounts(session=Depends(get_db_session)):
         return {
-            "accounts": ledger_service.get_accounts()
+            "accounts": ledger_service.get_accounts(session)
         }
 
     @app.post("/finance/account")
-    async def create_account(create: AccountCreateRequest):
+    async def create_account(create: AccountCreateRequest, session=Depends(get_db_session)):
         try:
-            account = LedgerService.create_account(create.name, create.type, create.tags)
+            account = LedgerService.create_account(session, create.name, create.type, create.tags)
         except DuplicateAccountException as e:
             raise HTTPException(status_code=409, detail=str(e))
         return account.model_dump()
 
     @app.put("/finance/account/{account_id}")
-    async def update_account(account_id: uuid.UUID, update: AccountUpdateRequest):
+    async def update_account(account_id: uuid.UUID, update: AccountUpdateRequest, session=Depends(get_db_session)):
         try:
-            account = LedgerService.update_account(account_id, update.name, update.tags)
+            account = LedgerService.update_account(session, account_id, update.name, update.tags)
         except AccountNotFoundException:
             raise HTTPException(status_code=404, detail="Account not found")
         except DuplicateAccountException as e:
@@ -178,38 +176,40 @@ def create_fastapi() -> FastAPI:
         return account.model_dump()
 
     @app.get("/finance/tag")
-    async def get_tags():
+    async def get_tags(session=Depends(get_db_session)):
         return {
-            "tags": ledger_service.get_tags()
+            "tags": ledger_service.get_tags(session)
         }
 
     @app.get("/finance/balance")
-    async def get_balance(params: GetBalanceParams = Depends()):
+    async def get_balance(params: GetBalanceParams = Depends(), session=Depends(get_db_session)):
         filters = TransactionFilters(**params.model_dump())
-        balances = ledger_service.get_balance(filters, params.account_types)
+        balances = ledger_service.get_balance(session, filters, params.account_types)
         return balances.model_dump()
 
 
     @app.get("/finance/balance_history")
-    async def get_balance_history(params: GetBalanceHistoryParams = Depends()):
+    async def get_balance_history(params: GetBalanceHistoryParams = Depends(), session=Depends(get_db_session)):
         filters = TransactionFilters(**params.model_dump())
-        balances = ledger_service.get_balance_history(filters, params.account_types, params.period or "month")
+        balances = ledger_service.get_balance_history(session, filters, params.account_types, params.period or "month")
         return balances.model_dump()
 
     @app.get("/finance/import_configuration")
-    async def get_import_configurations():
-        monzo_configs = [MonzoImportConfigResponse(**i.model_dump()) for i in ImportService.get_monzo_configs()]
-        gc_configs = [GcImportConfigResponse(**i.model_dump()) for i in ImportService.get_gc_configs()]
+    async def get_import_configurations(session=Depends(get_db_session)):
+        monzo_configs = [MonzoImportConfigResponse(**i.model_dump()) for i in ImportService.get_monzo_configs(session)]
+        gc_configs = [GcImportConfigResponse(**i.model_dump()) for i in ImportService.get_gc_configs(session)]
         return {
             "monzo_configs": monzo_configs,
             "gocardless_configs": gc_configs
         }
 
     @app.put("/finance/import_configuration/{import_id}")
-    async def update_import_configuration(import_id: uuid.UUID, update: ImportConfigUpdateRequest):
+    async def update_import_configuration(import_id: uuid.UUID, update: ImportConfigUpdateRequest,
+                                          session=Depends(get_db_session)):
         try:
             kind, config = ImportService.update_import_config(
-                import_id, update.cash_account_id, update.default_income_account_id, update.default_expense_account_id)
+                session, import_id, update.cash_account_id, update.default_income_account_id,
+                update.default_expense_account_id)
         except UnknownAccountError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except ValueError:
@@ -219,9 +219,9 @@ def create_fastapi() -> FastAPI:
         return response_cls(**config.model_dump())
 
     @app.get("/finance/import_configuration/{import_id}/rule")
-    async def get_import_rules(import_id: uuid.UUID):
+    async def get_import_rules(import_id: uuid.UUID, session=Depends(get_db_session)):
         try:
-            kind, rules = import_service.get_import_rules(import_id)
+            kind, rules = import_service.get_import_rules(session, import_id)
         except ValueError:
             raise HTTPException(status_code=404, detail="Rule not found")
 
@@ -231,23 +231,25 @@ def create_fastapi() -> FastAPI:
         }
 
     @app.put("/finance/import_configuration/{import_id}/rule")
-    async def update_import_rules(import_id: uuid.UUID, update: dict):
+    async def update_import_rules(import_id: uuid.UUID, update: dict, session=Depends(get_db_session)):
         # creates and updates rules, never deletes - use the delete endpoint for that
         # priority is determined by list order, first item is highest priority
-        kind = ImportService.get_import_rule_type(import_id)
+        kind = ImportService.get_import_rule_type(session, import_id)
         try:
             if kind == "monzo":
                 logging.info("updating monzo rules %s", import_id)
                 update = MonzoImportRuleUpdateRequest(**update)
                 rules = [MonzoImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
-                ImportService.upsert_monzo_import_rules(import_id, rules)
-                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in import_service.get_monzo_import_rules(import_id)]
+                ImportService.upsert_monzo_import_rules(session, import_id, rules)
+                rules = [MonzoImportRuleResponse(**r.model_dump()) for r in
+                        import_service.get_monzo_import_rules(session, import_id)]
             else:
                 logging.info("updating gc monzo rules %s", import_id)
                 update = GcImportRuleUpdateRequest(**update)
                 rules = [GcImportRuleDto(**r.model_dump(), priority=0) for r in update.rules]
-                ImportService.upsert_gc_import_rules(import_id, rules)
-                rules = [GcImportRuleResponse(**r.model_dump()) for r in ImportService.get_gc_import_rules(import_id)]
+                ImportService.upsert_gc_import_rules(session, import_id, rules)
+                rules = [GcImportRuleResponse(**r.model_dump()) for r in
+                        ImportService.get_gc_import_rules(session, import_id)]
         except UnknownAccountError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -256,30 +258,30 @@ def create_fastapi() -> FastAPI:
         }
 
     @app.delete("/finance/import_configuration/{import_id}/rule/{rule_id}")
-    async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID):
-        ImportService.delete_import_rule(import_id, rule_id)
+    async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID, session=Depends(get_db_session)):
+        ImportService.delete_import_rule(session, import_id, rule_id)
 
 
     @app.get("/finance/poster_config")
-    async def list_poster_configs(type: str | None = None):
-        configs = PosterConfigService.list_configs(type)
+    async def list_poster_configs(type: str | None = None, session=Depends(get_db_session)):
+        configs = PosterConfigService.list_configs(session, type)
         return {
             "poster_configs": [PosterConfigResponse(**c.model_dump()) for c in configs]
         }
 
     @app.get("/finance/poster_config/{config_id}")
-    async def get_poster_config(config_id: uuid.UUID):
+    async def get_poster_config(config_id: uuid.UUID, session=Depends(get_db_session)):
         try:
-            config = PosterConfigService.get_config(config_id)
+            config = PosterConfigService.get_config(session, config_id)
         except PosterConfigNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         return PosterConfigResponse(**config.model_dump())
 
     @app.post("/finance/poster_config")
-    async def create_poster_config(create: PosterConfigCreateRequest):
+    async def create_poster_config(create: PosterConfigCreateRequest, session=Depends(get_db_session)):
         try:
             config = PosterConfigService.create_config(
-                create.type, create.name, create.config, create.enabled)
+                session, create.type, create.name, create.config, create.enabled)
         except UnknownPosterTypeError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except InvalidPosterConfigError as e:
@@ -289,10 +291,11 @@ def create_fastapi() -> FastAPI:
         return PosterConfigResponse(**config.model_dump())
 
     @app.put("/finance/poster_config/{config_id}")
-    async def update_poster_config(config_id: uuid.UUID, update: PosterConfigUpdateRequest):
+    async def update_poster_config(config_id: uuid.UUID, update: PosterConfigUpdateRequest,
+                                   session=Depends(get_db_session)):
         try:
             config = PosterConfigService.update_config(
-                config_id, update.name, update.config, update.enabled)
+                session, config_id, update.name, update.config, update.enabled)
         except PosterConfigNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except InvalidPosterConfigError as e:
@@ -302,9 +305,8 @@ def create_fastapi() -> FastAPI:
         return PosterConfigResponse(**config.model_dump())
 
     @app.delete("/finance/poster_config/{config_id}")
-    async def delete_poster_config(config_id: uuid.UUID):
-        PosterConfigService.delete_config(config_id)
-
+    async def delete_poster_config(config_id: uuid.UUID, session=Depends(get_db_session)):
+        PosterConfigService.delete_config(session, config_id)
 
     return app
 

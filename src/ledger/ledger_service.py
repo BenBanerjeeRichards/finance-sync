@@ -6,6 +6,7 @@ from typing import Literal
 
 from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 import dependencies
 from constants import EXCHANGE_CARD_TRANSACTION_CREATED
@@ -13,7 +14,7 @@ from ledger.dto import TransactionDto, TransactionListDto, TransactionListResult
     PeriodicBalancesDto, CreateTransactionDto, AccountType
 from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
 from ledger.repo import LedgerRepo, TransactionFilters, ListTransactionCursor
-from main import Session
+from db import DBSession
 from model import Config, SimpleLedgerTransaction
 import logging
 
@@ -45,89 +46,76 @@ class LedgerService:
         self.rmq_connection = dependencies.get_rabbitmq_connection()
 
     @staticmethod
-    def get_transactions(filters: TransactionFilters, cursor_str: str | None,
+    def get_transactions(session: Session, filters: TransactionFilters, cursor_str: str | None,
                          count: int = 100) -> TransactionListResultDto:
-        with Session.begin() as session:
-            if cursor_str:
-                cursor = ListTransactionCursor.from_b64(cursor_str)
-            else:
-                cursor = None
-            transactions, next_cursor = LedgerRepo.get_transactions(session, filters, cursor=cursor, count=count)
-            tx_dtos = [TransactionListDto.model_validate(x) for x in transactions]
-            next_cursor_str = next_cursor.to_b64() if next_cursor else None
-            return TransactionListResultDto(transactions=tx_dtos, next_cursor=next_cursor_str)
+        if cursor_str:
+            cursor = ListTransactionCursor.from_b64(cursor_str)
+        else:
+            cursor = None
+        transactions, next_cursor = LedgerRepo.get_transactions(session, filters, cursor=cursor, count=count)
+        tx_dtos = [TransactionListDto.model_validate(x) for x in transactions]
+        next_cursor_str = next_cursor.to_b64() if next_cursor else None
+        return TransactionListResultDto(transactions=tx_dtos, next_cursor=next_cursor_str)
 
     @staticmethod
-    def get_transaction(tx_id: uuid.UUID) -> TransactionDto | None:
-        with Session.begin() as session:
-            tx = LedgerRepo.get_transaction_by_id(session, tx_id)
-            if not tx:
-                return None
-            return TransactionDto.model_validate(tx)
+    def get_transaction(session: Session, tx_id: uuid.UUID) -> TransactionDto | None:
+        tx = LedgerRepo.get_transaction_by_id(session, tx_id)
+        if not tx:
+            return None
+        return TransactionDto.model_validate(tx)
 
     @staticmethod
-    def get_payees(term: str | None) -> list[str]:
-        with Session.begin() as session:
-            return LedgerRepo.get_payees(session, term)
+    def get_payees(session: Session, term: str | None) -> list[str]:
+        return LedgerRepo.get_payees(session, term)
 
     @staticmethod
-    def get_accounts() -> list[AccountDto]:
-        with Session.begin() as session:
-            return LedgerRepo.get_accounts(session)
+    def get_accounts(session: Session) -> list[AccountDto]:
+        return LedgerRepo.get_accounts(session)
 
     @staticmethod
-    def create_account(name: str, type: AccountType, tags: list[str] | None = None) -> AccountDto:
-        with Session.begin() as session:
-            acc = Account(id=uuid.uuid4(), name=name, type=ModelAccountType(type.value), tags=tags or [])
-            session.add(acc)
-            try:
-                session.flush()
-            except IntegrityError:
-                raise DuplicateAccountException(f"An account named '{name}' of type '{type.value}' already exists")
-            session.refresh(acc)
-            return AccountDto.model_validate(acc)
+    def create_account(session: Session, name: str, type: AccountType, tags: list[str] | None = None) -> AccountDto:
+        acc = Account(id=uuid.uuid4(), name=name, type=ModelAccountType(type.value), tags=tags or [])
+        session.add(acc)
+        try:
+            session.flush()
+        except IntegrityError:
+            raise DuplicateAccountException(f"An account named '{name}' of type '{type.value}' already exists")
+        session.refresh(acc)
+        return AccountDto.model_validate(acc)
 
     @staticmethod
-    def update_account(account_id: uuid.UUID, name: str | None = None, tags: list[str] | None = None) -> AccountDto:
-        with Session.begin() as session:
-            acc = LedgerRepo.get_account_by_id(session, account_id)
-            if acc is None:
-                raise AccountNotFoundException()
-            if name is not None:
-                acc.name = name
-            if tags is not None:
-                acc.tags = tags
-            try:
-                session.flush()
-            except IntegrityError:
-                raise DuplicateAccountException(
-                    f"An account named '{acc.name}' of type '{acc.type.value}' already exists")
-            session.refresh(acc)
-            return AccountDto.model_validate(acc)
+    def update_account(session: Session, account_id: uuid.UUID, name: str | None = None,
+                       tags: list[str] | None = None) -> AccountDto:
+        acc = LedgerRepo.get_account_by_id(session, account_id)
+        if acc is None:
+            raise AccountNotFoundException()
+        if name is not None:
+            acc.name = name
+        if tags is not None:
+            acc.tags = tags
+        try:
+            session.flush()
+        except IntegrityError:
+            raise DuplicateAccountException(
+                f"An account named '{acc.name}' of type '{acc.type.value}' already exists")
+        session.refresh(acc)
+        return AccountDto.model_validate(acc)
 
     @staticmethod
-    def get_tags() -> list[str]:
-        with Session.begin() as session:
-            return LedgerRepo.get_tags(session)
-
+    def get_tags(session: Session) -> list[str]:
+        return LedgerRepo.get_tags(session)
 
     @staticmethod
-    def get_balance_with_session(session: Session, filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
+    def get_balance(session: Session, filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
         return LedgerRepo.get_balances(session, filters, account_types)
 
     @staticmethod
-    def get_balance(filters: TransactionFilters, account_types: list[str]) -> BalancesDto:
-        with Session.begin() as session:
-            return LedgerService.get_balance_with_session(session, filters, account_types)
-
-    @staticmethod
-    def get_balance_history(filters: TransactionFilters, account_types: list[str],
+    def get_balance_history(session: Session, filters: TransactionFilters, account_types: list[str],
                             period: Literal["day", "month", "week"]) -> PeriodicBalancesDto:
-        with Session.begin() as session:
-            return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
+        return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
     def create_or_update_transactions(self, txs: list[TransactionDto]) -> list[uuid.UUID]:
-        with Session.begin() as session:
+        with DBSession.begin() as session:
             return self.create_or_update_transactions_with_sesssion(session, txs)
 
 
@@ -189,16 +177,15 @@ class LedgerService:
             # TODO support updating tags and narration
             raise ImmutableTransactionException()
 
-        self.create_or_update_transactions([update_dto])
-        session.commit()
-        return self.get_transaction(update_dto.id)
+        self.create_or_update_transactions_with_sesssion(session, [update_dto])
+        return self.get_transaction(session, update_dto.id)
 
     def create_transaction(self, session, create_dto: CreateTransactionDto) -> TransactionDto:
         amount = sum([e.amount for e in create_dto.entries if e.amount >= 0])
         key = LedgerService.compute_key(create_dto.transaction_datetime, create_dto.payee, create_dto.narration, amount)
         full_dto = TransactionDto(id=uuid.uuid4(), key=key, **create_dto.model_dump())
-        self.create_or_update_transactions([full_dto])
-        return self.get_transaction(full_dto.id)
+        self.create_or_update_transactions_with_sesssion(session, [full_dto])
+        return self.get_transaction(session, full_dto.id)
 
     @staticmethod
     def find_all_by_metadata_by_date_desc(session, key: str, value: str) -> list[TransactionDto]:
@@ -206,15 +193,14 @@ class LedgerService:
         return [TransactionDto.model_validate(x) for x in res]
 
     @staticmethod
-    def safe_delete_transaction(tx_id: uuid.UUID) -> None:
-        with Session.begin() as session:
-            existing = LedgerRepo.get_transaction_by_id(session, tx_id)
-            if not existing:
-                raise TransactionNotFoundException()
-            source = existing.ledger_metadata.get("source")
-            if source:
-                raise ImmutableTransactionException()
-            LedgerService.delete_transactions(session, [tx_id])
+    def safe_delete_transaction(session: Session, tx_id: uuid.UUID) -> None:
+        existing = LedgerRepo.get_transaction_by_id(session, tx_id)
+        if not existing:
+            raise TransactionNotFoundException()
+        source = existing.ledger_metadata.get("source")
+        if source:
+            raise ImmutableTransactionException()
+        LedgerService.delete_transactions(session, [tx_id])
 
     @staticmethod
     def delete_transactions(session, ids: list[uuid.UUID]):
@@ -244,7 +230,8 @@ class LedgerService:
 
     def publish_new_card_transaction_event(self, tx_id: uuid.UUID):
         logging.info("publishing card-transaction.created event %s", tx_id)
-        tx = self.get_transaction(tx_id)
+        with DBSession.begin() as session:
+            tx = self.get_transaction(session, tx_id)
         assert tx
         ch = self.rmq_connection.channel()
         ch.basic_publish(EXCHANGE_CARD_TRANSACTION_CREATED, "", tx.model_dump_json())

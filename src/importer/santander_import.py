@@ -75,6 +75,7 @@ class SantanderImporter:
         )
 
     def update_expires_dates(self) -> int | None:
+        from db import DBSession
         from importer.import_service import ImportService
         self.client.get_new_tokens()
         requisitions = self.client.get_requisitions()
@@ -90,5 +91,6 @@ class SantanderImporter:
             durations_days.append(delta.days)
         if expires_dates:
             expires = min(expires_dates)
-            ImportService.update_santander_req_date(self.client.secret_id, expires)
+            with DBSession.begin() as session:
+                ImportService.update_santander_req_date(session, self.client.secret_id, expires)
         return min(durations_days) if durations_days else None

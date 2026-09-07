@@ -3,6 +3,7 @@ import logging
 import time
 
 import dependencies
+from db import DBSession
 from importer.import_service import MonzoImportIntegrationDto, GcImportIntegrationDto
 from poster.accrual_poster import AccrualsPoster
 from poster.base_poster import BasePoster
@@ -13,8 +14,8 @@ from poster.poster_config_service import PosterConfigService
 from poster.santander_poster import SantanderPoster
 
 
-def _get_monzo_config() -> MonzoImportIntegrationDto | None:
-    monzo_configs = dependencies.get_import_service().get_monzo_configs()
+def _get_monzo_config(session) -> MonzoImportIntegrationDto | None:
+    monzo_configs = dependencies.get_import_service().get_monzo_configs(session)
     if len(monzo_configs) != 1:
         logging.error("Expected exactly one monzo config, got %s", len(monzo_configs))
         return None
@@ -24,8 +25,8 @@ def _get_monzo_config() -> MonzoImportIntegrationDto | None:
         return None
     return monzo_config
 
-def _get_santander_config() -> GcImportIntegrationDto | None:
-    santander_configs = [c for c in dependencies.get_import_service().get_gc_configs() if c.kind == "santander"]
+def _get_santander_config(session) -> GcImportIntegrationDto | None:
+    santander_configs = [c for c in dependencies.get_import_service().get_gc_configs(session) if c.kind == "santander"]
     if len(santander_configs) != 1:
         logging.error("Expected exactly one santader config, got %s", len(santander_configs))
         return None
@@ -37,11 +38,12 @@ def _get_santander_config() -> GcImportIntegrationDto | None:
 
 
 def run_posters() -> None:
-    monzo_config = _get_monzo_config()
-    santander_config = _get_santander_config()
-    energy_config =  PosterConfigService.get_energy_config()
-    accrual_rules = PosterConfigService.get_accrual_configs()
-    mortgage_rules = PosterConfigService.get_mortgage_configs()
+    with DBSession.begin() as session:
+        monzo_config = _get_monzo_config(session)
+        santander_config = _get_santander_config(session)
+        energy_config = PosterConfigService.get_energy_config(session)
+        accrual_rules = PosterConfigService.get_accrual_configs(session)
+        mortgage_rules = PosterConfigService.get_mortgage_configs(session)
 
     posters: list[BasePoster] = []
     if monzo_config is not None:
@@ -74,5 +76,6 @@ def check_santander_notify(santander_config: GcImportIntegrationDto):
     diff = 0 if diff < 0 else int(diff)
     if diff <= 7:
         notifier = dependencies.get_notification_service()
-        notifier.register_santander_expiring(santander_config.id, cfg.gocardless.startUri, diff)
+        with DBSession.begin() as session:
+            notifier.register_santander_expiring(session, santander_config.id, cfg.gocardless.startUri, diff)
 

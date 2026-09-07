@@ -1,7 +1,7 @@
 import dependencies
 from poster.base_poster import BasePoster
 from ledger.ledger_service import LedgerService
-from main import Session
+from db import DBSession
 from model import AccrualConfig, SimpleLedgerTransaction
 import logging
 from decimal import Decimal
@@ -49,10 +49,10 @@ class AccrualsPoster(BasePoster):
         self.accrual_config = accrual_config
 
     def run(self):
-        with Session.begin() as session:
+        with DBSession.begin() as session:
             self.process_accrual(session, self.accrual_config)
 
-    def process_accrual(self, session: "Session", rule: AccrualConfig):
+    def process_accrual(self, session: "DBSession", rule: AccrualConfig):
         logging.info("Calculating accruals for rule %s", rule.metadata_key)
         settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         provisional_liabilities = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key,
