@@ -23,7 +23,7 @@ class NotificationService:
         with Session.begin() as session:
             # Only care about card transactions which will have two legs
             if len(transaction.entries) != 2:
-                logging.info("skipping notifying %s: > "), transaction.id
+                logging.info("skipping notifying %s: >2 legs "), transaction.id
                 return
             asset_entries: list[EntryDto] = [e for e in transaction.entries if e.account.type == AccountType.ASSET]
             santander_amount = sum([x.amount for x in asset_entries if x.account.name == "Santander"])
@@ -34,7 +34,7 @@ class NotificationService:
                 logging.info("skipping non-monzo or santander notification: %s", transaction.id)
                 return
 
-            context = NewTransactionNotification(transaction_id=str(transaction.id), amount=str(santander_amount),
+            context = NewTransactionNotification(transaction_key=str(transaction.key), amount=str(santander_amount),
                                                  counterparty_name=transaction.payee or transaction.narrative)
             self.notification_repo.register_notification(session, context.idempotency_key(),
                                                          "NewTransactionNotification", context.model_dump())

@@ -7,13 +7,13 @@ from pydantic import BaseModel, Discriminator
 
 class NewTransactionNotification(BaseModel):
     kind: Literal["NewTransaction"] = "NewTransaction"
-    transaction_id: str
+    transaction_key: str
     amount: str     # > 0 => money IN, < => money OUT. has to be str due to limitations of json serialization
     counterparty_name: str
 
     def idempotency_key(self) -> str:
         # Only send a single notification
-        return f"Type#NewTransaction#TranscationId#{self.transaction_id}"
+        return f"Type#NewTransaction#TransactionKey#{self.transaction_key}"
 
 
 class ExpiringConnectionNotification(BaseModel):
