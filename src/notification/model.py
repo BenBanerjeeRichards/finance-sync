@@ -1,21 +1,12 @@
-import abc
 import datetime
-import uuid
-from abc import ABC
-from decimal import Decimal
+from typing import Annotated, Union, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Discriminator
 
 
-class BaseNotificationContext(BaseModel, ABC):
-    kind: str
-    @abc.abstractmethod
-    def idempotency_key(self) -> str:
-        pass
 
-
-class NewTransactionNotification(BaseNotificationContext):
-    kind: str = "NewTransaction"
+class NewTransactionNotification(BaseModel):
+    kind: Literal["NewTransaction"] = "NewTransaction"
     transaction_id: str
     amount: str     # > 0 => money IN, < => money OUT. has to be str due to limitations of json serialization
     counterparty_name: str
@@ -25,8 +16,8 @@ class NewTransactionNotification(BaseNotificationContext):
         return f"Type#NewTransaction#TranscationId#{self.transaction_id}"
 
 
-class ExpiringConnectionNotification(BaseNotificationContext):
-    kind: str = "ExpiringConnection"
+class ExpiringConnectionNotification(BaseModel):
+    kind: Literal["ExpiringConnection"] = "ExpiringConnection"
     name: str
     connection_id: str
     expires_in_days: int | None = None
@@ -37,3 +28,5 @@ class ExpiringConnectionNotification(BaseNotificationContext):
         # Notify each day
         now = datetime.datetime.now()
         return f"Type#ExpiringConnection#ConnectionId#{self.connection_id}#Date#{now.date().isoformat()}"
+
+NotificationContext = Annotated[Union[NewTransactionNotification, ExpiringConnectionNotification], Discriminator("kind")]

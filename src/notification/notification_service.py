@@ -1,12 +1,14 @@
 import uuid
 from decimal import Decimal
 
+from pydantic import TypeAdapter
+
 import dependencies
 from ledger.dto import TransactionDto, AccountType, EntryDto
 from ledger.ledger_service import LedgerService
 from main import Session
 from notification.discord import DiscordClient
-from notification.model import NewTransactionNotification, ExpiringConnectionNotification
+from notification.model import NewTransactionNotification, ExpiringConnectionNotification, NotificationContext
 import logging
 
 
@@ -45,22 +47,22 @@ class NotificationService:
                                                          "ExpiringConnection", context.model_dump())
 
     def send_notifications(self):
+        adapter = TypeAdapter(NotificationContext)
         for i in range(10):  # limit per batch
             with Session.begin() as session:
                 claim = self.notification_repo.claim_next_notification(session)
                 if not claim:
                     return
-                if claim.type == "NewTransactionNotification":
-                    ctx = NewTransactionNotification(**claim.context)
-                    self.send_new_transaction_notification(ctx)
-                elif claim.type == "ExpiringConnection":
-                    ctx = ExpiringConnectionNotification(**claim.context)
-                    self.send_expiring_connection_notification(ctx)
+                context = adapter.validate_python(claim.context)
+                if isinstance(context, NewTransactionNotification):
+                    self.send_new_transaction_notification(context)
+                if isinstance(context, ExpiringConnectionNotification):
+                    self.send_expiring_connection_notification(context)
                 else:
-                    logging.error("Unknown notification type %s", claim.type)
+                    logging.error("Unknown notification type %s", context.kind)
 
     def send_new_transaction_notification(self, context: NewTransactionNotification):
-        asset_amount = Decimal(context.amount)
+        asset_amount = Decimal(context.amount).quantize(Decimal(".01"))
         if asset_amount > 0:
             self.discord_client.send_message(f"💸 Received £{asset_amount} from {context.counterparty_name}")
         else:

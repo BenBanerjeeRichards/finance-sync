@@ -14,7 +14,6 @@ from monzo import MonzoClient
 from notification.discord import DiscordClient
 from notification.notification_repo import NotificationRepo
 from notification.notification_service import NotificationService
-from notification.notifier import Notifier
 from storage import Store
 
 
@@ -112,9 +111,6 @@ def get_gc_connection() -> GcConnection:
         config=get_config(),
     )
 
-
-def get_notifier() -> Notifier:
-    return Notifier(get_discord_client())
 
 
 def get_santander_importer() -> SantanderImporter:
