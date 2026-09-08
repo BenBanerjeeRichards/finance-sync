@@ -15,6 +15,12 @@ from ledger.dto import TransactionDto, CreateTransactionDto
 from ledger.ledger_service import ImmutableTransactionException, TransactionNotFoundException, \
     TransactionDoesNotBalanceException, LedgerService, AccountNotFoundException, DuplicateAccountException
 from ledger.repo import TransactionFilters
+from ledger.account_alert_service import (
+    AccountAlertService,
+    AccountNotFoundException as AccountAlertAccountNotFoundException,
+    AccountAlertNotFoundException,
+    InvalidAccountAlertConditionException,
+)
 from db import get_db_session
 from model import MonzoSyncMessage
 from poster.poster_config_service import (
@@ -261,6 +267,46 @@ def create_fastapi() -> FastAPI:
     async def delete_import_rule(import_id: uuid.UUID, rule_id: uuid.UUID, session=Depends(get_db_session)):
         ImportService.delete_import_rule(session, import_id, rule_id)
 
+
+    @app.get("/finance/account_alert")
+    async def list_account_alerts(account_id: uuid.UUID | None = None, session=Depends(get_db_session)):
+        alerts = AccountAlertService.list_alerts(session, account_id)
+        return {
+            "account_alerts": [AccountAlertResponse(**a.model_dump()) for a in alerts]
+        }
+
+    @app.get("/finance/account_alert/{alert_id}")
+    async def get_account_alert(alert_id: uuid.UUID, session=Depends(get_db_session)):
+        try:
+            alert = AccountAlertService.get_alert(session, alert_id)
+        except AccountAlertNotFoundException as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        return AccountAlertResponse(**alert.model_dump())
+
+    @app.post("/finance/account_alert")
+    async def create_account_alert(create: AccountAlertCreateRequest, session=Depends(get_db_session)):
+        try:
+            alert = AccountAlertService.create_alert(session, create.account_id, create.condition, create.amount)
+        except AccountAlertAccountNotFoundException as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except InvalidAccountAlertConditionException as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return AccountAlertResponse(**alert.model_dump())
+
+    @app.put("/finance/account_alert/{alert_id}")
+    async def update_account_alert(alert_id: uuid.UUID, update: AccountAlertUpdateRequest,
+                                   session=Depends(get_db_session)):
+        try:
+            alert = AccountAlertService.update_alert(session, alert_id, update.condition, update.amount)
+        except AccountAlertNotFoundException as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except InvalidAccountAlertConditionException as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        return AccountAlertResponse(**alert.model_dump())
+
+    @app.delete("/finance/account_alert/{alert_id}")
+    async def delete_account_alert(alert_id: uuid.UUID, session=Depends(get_db_session)):
+        AccountAlertService.delete_alert(session, alert_id)
 
     @app.get("/finance/poster_config")
     async def list_poster_configs(type: str | None = None, session=Depends(get_db_session)):

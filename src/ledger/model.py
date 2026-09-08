@@ -258,3 +258,13 @@ class Notification(Base):
         JSONB,
         server_default=text("'{}'::jsonb")
     )
+
+
+class AccountAlerts(Base):
+    __tablename__ = "account_alerts"
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(ForeignKey("account.id"), index=True)
+
+    condition: Mapped[str] = mapped_column()
+    amount: Mapped[Decimal] = mapped_column()

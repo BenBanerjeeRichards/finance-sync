@@ -88,6 +88,24 @@ class PosterConfigUpdateRequest(BaseModel):
     enabled: bool | None = None
 
 
+class AccountAlertResponse(BaseModel):
+    id: UUID
+    account_id: UUID
+    condition: Literal["above", "below"]
+    amount: Decimal
+
+
+class AccountAlertCreateRequest(BaseModel):
+    account_id: UUID
+    condition: Literal["above", "below"]
+    amount: Decimal
+
+
+class AccountAlertUpdateRequest(BaseModel):
+    condition: Literal["above", "below"] | None = None
+    amount: Decimal | None = None
+
+
 class MonzoImportConfigResponse(BaseModel):
     id: UUID
     client_id: str
