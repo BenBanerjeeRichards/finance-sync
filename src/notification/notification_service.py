@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import TypeAdapter
 
@@ -8,7 +9,8 @@ from db import DBSession
 from ledger.dto import TransactionDto, AccountType, EntryDto
 from ledger.ledger_service import LedgerService
 from notification.discord import DiscordClient
-from notification.model import NewTransactionNotification, ExpiringConnectionNotification, NotificationContext
+from notification.model import NewTransactionNotification, ExpiringConnectionNotification, NotificationContext, \
+    AccountBalanceNotification
 import logging
 
 
@@ -35,15 +37,19 @@ class NotificationService:
 
         context = NewTransactionNotification(transaction_key=str(transaction.key), amount=str(santander_amount),
                                              counterparty_name=transaction.payee or transaction.narrative)
-        self.notification_repo.register_notification(session, context.idempotency_key(),
-                                                     "NewTransactionNotification", context.model_dump())
+        self.notification_repo.register_notification(session, context.idempotency_key(), context)
 
     def register_santander_expiring(self, session, connection_id: uuid.UUID, reauth_link: str,
                                     expires_in_days: int) -> None:
         context = ExpiringConnectionNotification(name="Santander", reauth_link=reauth_link,
                                                  connection_id=str(connection_id), expires_in_days=expires_in_days)
-        self.notification_repo.register_notification(session, context.idempotency_key(),
-                                                     "ExpiringConnection", context.model_dump())
+        self.notification_repo.register_notification(session, context.idempotency_key(), context)
+
+    def register_account_balance_notification(self, session, rule_id: uuid.UUID, account_name: str, threshold: Decimal,
+                                              condition: Literal["above", "below"], balance: Decimal):
+        context = AccountBalanceNotification(alert_id=str(rule_id), account_name=account_name, threshold=str(threshold),
+                                             condition=condition, balance=str(balance))
+        self.notification_repo.register_notification(session, context.idempotency_key(), context)
 
     def send_notifications(self):
         adapter = TypeAdapter(NotificationContext)
@@ -57,6 +63,8 @@ class NotificationService:
                     self.send_new_transaction_notification(context)
                 elif isinstance(context, ExpiringConnectionNotification):
                     self.send_expiring_connection_notification(context)
+                elif isinstance(context, AccountBalanceNotification):
+                    self.send_balance_notification(context)
                 else:
                     logging.error("Unknown notification type %s", context.kind)
 
@@ -67,9 +75,15 @@ class NotificationService:
         else:
             self.discord_client.send_message(f"💵 Spent £{abs(asset_amount)} at {context.counterparty_name}")
 
-
     def send_expiring_connection_notification(self, context: ExpiringConnectionNotification):
         message = f"⚠️ {context.name} connection expires {"soon" if not context.expires_in_days else f"in {context.expires_in_days} days"}"
         if context.reauth_link:
             message += ". Reauth: " + context.reauth_link
         self.discord_client.send_message(message)
+
+
+    def send_balance_notification(self, context: AccountBalanceNotification):
+        em = "🚨" if context.condition == "below" else "⚠️"
+        balance = Decimal(context.balance).quantize(Decimal(".01"))
+        msg = f"{em} Account {context.account_name} balance is £{balance} ({context.condition} £{context.threshold})"
+        self.discord_client.send_message(msg)

@@ -9,6 +9,7 @@ from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 from importer.import_service import ImportService
 from importer.santander_import import SantanderImporter
+from ledger.account_alert_service import AccountAlertService
 from ledger.ledger_service import LedgerService
 from model import Config, Settings
 from monzo import MonzoClient

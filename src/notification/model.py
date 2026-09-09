@@ -29,4 +29,19 @@ class ExpiringConnectionNotification(BaseModel):
         now = datetime.datetime.now()
         return f"Type#ExpiringConnection#ConnectionId#{self.connection_id}#Date#{now.date().isoformat()}"
 
-NotificationContext = Annotated[Union[NewTransactionNotification, ExpiringConnectionNotification], Discriminator("kind")]
+
+class AccountBalanceNotification(BaseModel):
+    kind: Literal["AccountBalance"] = "AccountBalance"
+    alert_id: str
+    account_name: str
+    condition: Literal["above", "below"]
+    threshold: str
+    balance: str
+
+    def idempotency_key(self) -> str:
+        # Notify once per day
+        now = datetime.datetime.now()
+        return f"Type#AccountBalance#RuleId#{self.alert_id}#Date#{now.date().isoformat()}"
+
+
+NotificationContext = Annotated[Union[NewTransactionNotification, ExpiringConnectionNotification, AccountBalanceNotification], Discriminator("kind")]

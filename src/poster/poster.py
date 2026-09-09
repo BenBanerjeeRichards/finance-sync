@@ -1,10 +1,14 @@
 import datetime
 import logging
+import operator
 import time
 
 import dependencies
 from db import DBSession
 from importer.import_service import MonzoImportIntegrationDto, GcImportIntegrationDto
+from ledger.account_alert_service import AccountAlertService
+from ledger.ledger_service import LedgerService
+from ledger.repo import TransactionFilters
 from poster.accrual_poster import AccrualsPoster
 from poster.base_poster import BasePoster
 from poster.energy_sync import EnergyConsumptionPoster
@@ -20,10 +24,12 @@ def _get_monzo_config(session) -> MonzoImportIntegrationDto | None:
         logging.error("Expected exactly one monzo config, got %s", len(monzo_configs))
         return None
     monzo_config = monzo_configs[0]
-    if None in [monzo_config.default_expense_account_id, monzo_config.default_income_account_id, monzo_config.cash_account_id]:
+    if None in [monzo_config.default_expense_account_id, monzo_config.default_income_account_id,
+                monzo_config.cash_account_id]:
         logging.error("Monzo config not yet configured, skipping...")
         return None
     return monzo_config
+
 
 def _get_santander_config(session) -> GcImportIntegrationDto | None:
     santander_configs = [c for c in dependencies.get_import_service().get_gc_configs(session) if c.kind == "santander"]
@@ -31,7 +37,8 @@ def _get_santander_config(session) -> GcImportIntegrationDto | None:
         logging.error("Expected exactly one santader config, got %s", len(santander_configs))
         return None
     santander_config = santander_configs[0]
-    if None in [santander_config.default_expense_account_id, santander_config.default_income_account_id, santander_config.cash_account_id]:
+    if None in [santander_config.default_expense_account_id, santander_config.default_income_account_id,
+                santander_config.cash_account_id]:
         logging.error("Santander config not yet configured, skipping...")
         return None
     return santander_config
@@ -68,6 +75,8 @@ def run_posters() -> None:
 
     if santander_config:
         check_santander_notify(santander_config)
+    check_balances()
+
 
 def check_santander_notify(santander_config: GcImportIntegrationDto):
     cfg = dependencies.get_config()
@@ -79,3 +88,26 @@ def check_santander_notify(santander_config: GcImportIntegrationDto):
         with DBSession.begin() as session:
             notifier.register_santander_expiring(session, santander_config.id, cfg.gocardless.startUri, diff)
 
+
+def check_balances():
+    ops = {
+       "above": operator.gt,
+        "below": operator.lt,
+    }
+    not_service = dependencies.get_notification_service()
+    with DBSession.begin() as session:
+        rules = AccountAlertService.list_alerts(session)
+        if not rules:
+            return
+        accounts = LedgerService.get_accounts(session)
+        balances = LedgerService.get_balance(session, TransactionFilters(), account_types=[]).balances
+        for rule in rules:
+            bal = [b for b in balances if b.account_id == rule.account_id]
+            if not bal:
+                logging.error("Failed to get balance for %s", rule.account_id)
+                continue
+            acc_balance = bal[0].amount
+            if ops[rule.condition](acc_balance, rule.amount):
+                matching_account = [a for a in accounts if a.id == rule.account_id][0].name
+                not_service.register_account_balance_notification(session, rule.id, matching_account, rule.amount,
+                                                                  rule.condition, acc_balance)

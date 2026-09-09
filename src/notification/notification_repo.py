@@ -10,16 +10,17 @@ from ledger.model import Notification
 
 import logging
 
+from notification.model import NotificationContext
+
+
 class NotificationRepo:
 
     def __init__(self):
         pass
 
-    def register_notification(self, session: Session, key: str,
-                              type: Literal["NewTransactionNotification", "ExpiringConnection"],
-                              context: dict[str, str]) -> uuid.UUID:
+    def register_notification(self, session: Session, key: str, context: NotificationContext) -> uuid.UUID:
         # Silently does nothing if key already exists
-        stmt = insert(Notification).values(id=uuid.uuid4(), key=key, context=context, type=type)
+        stmt = insert(Notification).values(id=uuid.uuid4(), key=key, context=context.model_dump(), type=context.kind)
         stmt = stmt.on_conflict_do_nothing(index_elements=["key"])
         session.execute(stmt)
         q = select(Notification).where(Notification.key == key)
