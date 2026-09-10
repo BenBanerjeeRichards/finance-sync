@@ -66,12 +66,14 @@ def run_posters() -> None:
 
     for poster in posters:
         start = time.time()
-        try:
-            poster.run()
-        except Exception:
-            logging.exception("Failed to run poster %s", poster.__class__.__name__)
-        end = time.time()
-        logging.info("Poster %s ran for %s ms", poster.__class__.__name__, int((end - start) * 1000))
+        with DBSession.begin() as session:
+            try:
+                poster.run(session)
+            except Exception:
+                logging.exception("Failed to run poster %s", poster.__class__.__name__)
+                session.rollback()
+            end = time.time()
+            logging.info("Poster %s ran for %s ms", poster.__class__.__name__, int((end - start) * 1000))
 
     if santander_config:
         check_santander_notify(santander_config)

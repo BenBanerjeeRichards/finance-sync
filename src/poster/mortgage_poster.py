@@ -2,11 +2,12 @@ import datetime
 import uuid
 from decimal import Decimal
 
+from sqlalchemy.orm import Session
+
 import dependencies
 from ledger.dto import EntryDto, AccountDto, AccountType, TransactionDto
 from ledger.ledger_service import LedgerService
 from ledger.repo import TransactionFilters
-from db import DBSession
 from model import MortgageConfig
 from poster.base_poster import BasePoster
 import logging
@@ -54,7 +55,7 @@ class MortgagePoster(BasePoster):
     def __init__(self, mortgage_config: MortgageConfig):
         self.mortgage_config = mortgage_config
 
-    def run(self) -> None:
+    def run(self, session: Session) -> None:
         monthly_interest_rate = self.mortgage_config.interestPercent / Decimal("1200")
         # Estimated as banks calculate daily so this can be very slightly different (within 1%)
         est_monthly_payment = MortgagePoster._monthly_payment(self.mortgage_config.interestPercent,
@@ -74,93 +75,92 @@ class MortgagePoster(BasePoster):
             dates.append(current)
             current += relativedelta(months=1)
 
-        with DBSession.begin() as session:
-            # First delete all computed items so we can start with a clean slate
-            existing_computed = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "computed")
-            # leave alone the computed ones on manually created payments otherwise we loose them
-            to_delete_ids = [t.id for t in existing_computed if t.transaction_datetime >= SANTANDER_BEGIN]
-            if len(to_delete_ids):
-                logging.info("deleting %s existing computed mortgage transactions", len(to_delete_ids))
-            LedgerService.delete_transactions(session, to_delete_ids)
+        # First delete all computed items so we can start with a clean slate
+        existing_computed = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "computed")
+        # leave alone the computed ones on manually created payments otherwise we loose them
+        to_delete_ids = [t.id for t in existing_computed if t.transaction_datetime >= SANTANDER_BEGIN]
+        if len(to_delete_ids):
+            logging.info("deleting %s existing computed mortgage transactions", len(to_delete_ids))
+        LedgerService.delete_transactions(session, to_delete_ids)
 
-            payment_history = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "pending")
-            for month in dates:
-                logging.info("processing mortgage transaction for month %s", month)
-                month_payments = [tx for tx in payment_history if
-                                  tx.transaction_datetime.year == month.year and
-                                  tx.transaction_datetime.month == month.month]
+        payment_history = LedgerService.find_all_by_metadata_by_date_desc(session, "mortgage", "pending")
+        logging.info("processing mortgage transaction for period %s to %s", dates[0], dates[-1])
+        for month in dates:
+            month_payments = [tx for tx in payment_history if
+                              tx.transaction_datetime.year == month.year and
+                              tx.transaction_datetime.month == month.month]
 
-                primary_payments = [p for p in month_payments if
-                                    p.absolute_amount() >= Decimal(
-                                        "0.99") * est_monthly_payment]
+            primary_payments = [p for p in month_payments if
+                                p.absolute_amount() >= Decimal(
+                                    "0.99") * est_monthly_payment]
 
-                if not primary_payments:
-                    logging.info("No primary mortgage payment (%s) found for period %s", est_monthly_payment,
-                                 month)
-                    continue
-                # Primary payment = main mortgage payment that is part principal, part interest
-                # Part of the primary payment could be overpayment
-                # All other payments are overpayments
-                primary_payment = primary_payments[0]
-                primary_credit_account = [e for e in primary_payment.entries if e.amount < Decimal("0")][0].account.id
-                primary_amount = primary_payment.absolute_amount()
-                other_payments = [p for p in month_payments if p.id != primary_payment.id]
-                # 1.01 to adjust for that fact that bank's computation of monthly payment differs slightly
-                if primary_amount >= Decimal("1.01") * est_monthly_payment:
-                    primary_overpayment_amount = primary_amount - est_monthly_payment
-                else:
-                    primary_overpayment_amount = Decimal("0")
+            if not primary_payments:
+                logging.info("No primary mortgage payment (%s) found for period %s", est_monthly_payment,
+                             month)
+                continue
+            # Primary payment = main mortgage payment that is part principal, part interest
+            # Part of the primary payment could be overpayment
+            # All other payments are overpayments
+            primary_payment = primary_payments[0]
+            primary_credit_account = [e for e in primary_payment.entries if e.amount < Decimal("0")][0].account.id
+            primary_amount = primary_payment.absolute_amount()
+            other_payments = [p for p in month_payments if p.id != primary_payment.id]
+            # 1.01 to adjust for that fact that bank's computation of monthly payment differs slightly
+            if primary_amount >= Decimal("1.01") * est_monthly_payment:
+                primary_overpayment_amount = primary_amount - est_monthly_payment
+            else:
+                primary_overpayment_amount = Decimal("0")
 
-                remaining_principal = MortgagePoster._outstanding_mortgage_principal_on_date(
-                    session, self.mortgage_config.mortgageLiabilityAccount, month)
-                if not remaining_principal:
-                    logging.warning("Failed to find remaining principal for month %s", month)
-                    continue
-                interest_amount = remaining_principal * monthly_interest_rate
-                if interest_amount >= primary_amount:
-                    logging.warning("Interest %s exceeds monthly payment %s", interest_amount, primary_amount)
-                    continue
-                primary_principal = primary_amount - interest_amount - primary_overpayment_amount
+            remaining_principal = MortgagePoster._outstanding_mortgage_principal_on_date(
+                session, self.mortgage_config.mortgageLiabilityAccount, month)
+            if not remaining_principal:
+                logging.warning("Failed to find remaining principal for month %s", month)
+                continue
+            interest_amount = remaining_principal * monthly_interest_rate
+            if interest_amount >= primary_amount:
+                logging.warning("Interest %s exceeds monthly payment %s", interest_amount, primary_amount)
+                continue
+            primary_principal = primary_amount - interest_amount - primary_overpayment_amount
 
-                primary = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
-                                                            dt=primary_payment.transaction_datetime,
-                                                            external_id=f"mortgage_primary_{primary_payment.key}",
-                                                            group_id=primary_payment.group_id,
-                                                            payee=primary_payment.payee,
-                                                            narration=primary_payment.narration,
-                                                            principal_amount=primary_principal,
-                                                            interest_amount=interest_amount,
-                                                            tags=["committed"])
-                ledger_service.create_or_update_transactions_with_sesssion(session, [primary])
-                LedgerService.supersede_transaction(session, primary_payment.id, primary.group_id)
-                if primary_overpayment_amount > Decimal("0"):
-                    p_overpayment = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
-                                                                      dt=primary_payment.transaction_datetime,
-                                                                      external_id=f"mortgage_overpayment_{primary_payment.key}",
-                                                                      group_id=primary_payment.group_id,
-                                                                      payee=primary_payment.payee,
-                                                                      narration=primary_payment.narration,
-                                                                      principal_amount=primary_overpayment_amount,
-                                                                      interest_amount=Decimal("0"),
-                                                                      tags=["overpayment"])
-                    ledger_service.create_or_update_transactions_with_sesssion(session, [p_overpayment])
-                    session.flush()
+            primary = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
+                                                        dt=primary_payment.transaction_datetime,
+                                                        external_id=f"mortgage_primary_{primary_payment.key}",
+                                                        group_id=primary_payment.group_id,
+                                                        payee=primary_payment.payee,
+                                                        narration=primary_payment.narration,
+                                                        principal_amount=primary_principal,
+                                                        interest_amount=interest_amount,
+                                                        tags=["committed"])
+            ledger_service.create_or_update_transactions(session, [primary])
+            LedgerService.supersede_transaction(session, primary_payment.id, primary.group_id)
+            if primary_overpayment_amount > Decimal("0"):
+                p_overpayment = self._create_mortgage_transaction(credit_account_id=primary_credit_account,
+                                                                  dt=primary_payment.transaction_datetime,
+                                                                  external_id=f"mortgage_overpayment_{primary_payment.key}",
+                                                                  group_id=primary_payment.group_id,
+                                                                  payee=primary_payment.payee,
+                                                                  narration=primary_payment.narration,
+                                                                  principal_amount=primary_overpayment_amount,
+                                                                  interest_amount=Decimal("0"),
+                                                                  tags=["overpayment"])
+                ledger_service.create_or_update_transactions(session, [p_overpayment])
+                session.flush()
 
-                for dedicated_overpayment in other_payments:
-                    acc_credit_id = [e for e in dedicated_overpayment.entries if e.amount < Decimal("0")][0].account.id
-                    overpayment = self._create_mortgage_transaction(credit_account_id=acc_credit_id,
-                                                                    dt=dedicated_overpayment.transaction_datetime,
-                                                                    external_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
-                                                                    group_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
-                                                                    payee=dedicated_overpayment.payee,
-                                                                    narration=dedicated_overpayment.narration,
-                                                                    principal_amount=dedicated_overpayment.absolute_amount(),
-                                                                    interest_amount=Decimal("0"),
-                                                                    tags=["overpayment"])
+            for dedicated_overpayment in other_payments:
+                acc_credit_id = [e for e in dedicated_overpayment.entries if e.amount < Decimal("0")][0].account.id
+                overpayment = self._create_mortgage_transaction(credit_account_id=acc_credit_id,
+                                                                dt=dedicated_overpayment.transaction_datetime,
+                                                                external_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
+                                                                group_id=f"mortgage_overpayment_{dedicated_overpayment.key}",
+                                                                payee=dedicated_overpayment.payee,
+                                                                narration=dedicated_overpayment.narration,
+                                                                principal_amount=dedicated_overpayment.absolute_amount(),
+                                                                interest_amount=Decimal("0"),
+                                                                tags=["overpayment"])
 
-                    ledger_service.create_or_update_transactions_with_sesssion(session, [overpayment])
-                    session.flush()
-                    LedgerService.supersede_transaction(session, dedicated_overpayment.id, overpayment.group_id)
+                ledger_service.create_or_update_transactions(session, [overpayment])
+                session.flush()
+                LedgerService.supersede_transaction(session, dedicated_overpayment.id, overpayment.group_id)
 
     def _create_mortgage_transaction(self, credit_account_id: uuid.UUID, dt: datetime.datetime, external_id: str,
                                      group_id: str, payee: str, narration: str,

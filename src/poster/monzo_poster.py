@@ -1,7 +1,8 @@
 import logging
 
+from sqlalchemy.orm import Session
+
 import dependencies
-from db import DBSession
 from poster.base_poster import BasePoster
 from model import *
 from model import Transaction as MonzoTransaction
@@ -22,16 +23,17 @@ class MonzoPoster(BasePoster):
 
     def __init__(self, import_config: MonzoImportIntegrationDto) -> None:
         self.import_config = import_config
-        with DBSession.begin() as session:
-            self.import_rules = dependencies.get_import_service().get_monzo_import_rules(session, import_config.id)
+        self.import_rules = []
 
-    def run(self):
+    def run(self, session: Session):
+        import_rules = dependencies.get_import_service().get_monzo_import_rules(session, self.import_config.id)
+        self.import_rules = import_rules
         monzo_transactions = dependencies.get_transactions_store().load_list(MONZO_TX_FILE, Transaction)
         ledger_transactions = [self.translate_to_ledger(tx) for tx in monzo_transactions if
                                tx.created > "2024-04"]
         ledger_service = dependencies.get_ledger_service()
         logging.info("writing monzo to db (%s)", len(ledger_transactions))
-        new_txs = ledger_service.create_or_update_simple_transactions(ledger_transactions)
+        new_txs = ledger_service.create_or_update_simple_transactions(session, ledger_transactions)
         [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
 
 

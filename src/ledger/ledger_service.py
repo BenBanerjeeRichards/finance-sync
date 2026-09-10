@@ -114,12 +114,8 @@ class LedgerService:
                             period: Literal["day", "month", "week"]) -> PeriodicBalancesDto:
         return LedgerRepo.get_balances_over_time(session, filters, account_types, granularity=period)
 
-    def create_or_update_transactions(self, txs: list[TransactionDto]) -> list[uuid.UUID]:
-        with DBSession.begin() as session:
-            return self.create_or_update_transactions_with_sesssion(session, txs)
 
-
-    def create_or_update_transactions_with_sesssion(self, session, txs: list[TransactionDto]) -> list[uuid.UUID]:
+    def create_or_update_transactions(self, session, txs: list[TransactionDto]) -> list[uuid.UUID]:
         # 1. Create transactions
         # 2. Create entries, linking to transactions using key -> id
         # 3. Remove any unused legs (as we allow updating items as this isn't a proper ledger)
@@ -155,9 +151,9 @@ class LedgerService:
         LedgerRepo.bulk_upsert_entries(session, entries)
         return inserted
 
-    def create_or_update_simple_transactions(self, ledger_txs: list[SimpleLedgerTransaction]) -> list[uuid.UUID]:
+    def create_or_update_simple_transactions(self, session, ledger_txs: list[SimpleLedgerTransaction]) -> list[uuid.UUID]:
         transactions = [tx.to_dto() for tx in ledger_txs]
-        return self.create_or_update_transactions(transactions)
+        return self.create_or_update_transactions(session, transactions)
 
     def update_transaction(self, session, update_dto: TransactionDto) -> TransactionDto:
         """
@@ -177,14 +173,14 @@ class LedgerService:
             # TODO support updating tags and narration
             raise ImmutableTransactionException()
 
-        self.create_or_update_transactions_with_sesssion(session, [update_dto])
+        self.create_or_update_transactions(session, [update_dto])
         return self.get_transaction(session, update_dto.id)
 
     def create_transaction(self, session, create_dto: CreateTransactionDto) -> TransactionDto:
         amount = sum([e.amount for e in create_dto.entries if e.amount >= 0])
         key = LedgerService.compute_key(create_dto.transaction_datetime, create_dto.payee, create_dto.narration, amount)
         full_dto = TransactionDto(id=uuid.uuid4(), key=key, **create_dto.model_dump())
-        self.create_or_update_transactions_with_sesssion(session, [full_dto])
+        self.create_or_update_transactions(session, [full_dto])
         return self.get_transaction(session, full_dto.id)
 
     @staticmethod

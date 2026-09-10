@@ -7,12 +7,12 @@ import requests
 from pydantic import BaseModel
 import logging
 
+from sqlalchemy.orm import Session
+
 import dependencies
 from model import SimpleLedgerTransaction, EnergyConfig
 from poster.base_poster import BasePoster
-from poster.poster_config_service import PosterConfigService
 from ledger.ledger_service import LedgerService
-from db import DBSession
 import uuid
 
 
@@ -44,19 +44,20 @@ class EnergyConsumptionPoster(BasePoster):
         self.config = dependencies.get_config()
         self.energy_config = energy_config
 
-    def run(self):
+    def run(self, session: Session):
         if not self.energy_config:
             logging.info("Energy Sync not configured, skipping")
             return
 
         energy_client = EnergyClient(self.config.energySyncBaseUrl)
-        self._create_energy_transactions(energy_client, "electricity",
+        self._create_energy_transactions(session, energy_client, "electricity",
                                          self.energy_config.electricityPrepayAccount,
                                          self.energy_config.electricityExpenseAccount)
-        self._create_energy_transactions(energy_client, "gas", self.energy_config.gasPrepayAccount,
+        self._create_energy_transactions(session, energy_client, "gas", self.energy_config.gasPrepayAccount,
                                          self.energy_config.gasExpenseAccount)
 
-    def _create_energy_transactions(self, client: EnergyClient, meter_type: Literal["gas", "electricity"],
+    def _create_energy_transactions(self, session: Session, client: EnergyClient,
+                                    meter_type: Literal["gas", "electricity"],
                                     asset_account: uuid.UUID, expense_account: uuid.UUID):
         readings = client.get_monthly_readings(self.energy_config.startMonth, meter_type)
         transactions = []
@@ -75,4 +76,4 @@ class EnergyConsumptionPoster(BasePoster):
                                                         source="energy",
                                                         amount=amount,
                                                         metadata={}))
-        LedgerService(self.config).create_or_update_simple_transactions(transactions)
+        LedgerService(self.config).create_or_update_simple_transactions(session, transactions)

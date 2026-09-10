@@ -1,7 +1,8 @@
+from sqlalchemy.orm import Session
+
 import dependencies
 from poster.base_poster import BasePoster
 from ledger.ledger_service import LedgerService
-from db import DBSession
 from model import AccrualConfig, SimpleLedgerTransaction
 import logging
 from decimal import Decimal
@@ -48,11 +49,10 @@ class AccrualsPoster(BasePoster):
         self.ledger_service = dependencies.get_ledger_service()
         self.accrual_config = accrual_config
 
-    def run(self):
-        with DBSession.begin() as session:
-            self.process_accrual(session, self.accrual_config)
+    def run(self, session: Session):
+        self.process_accrual(session, self.accrual_config)
 
-    def process_accrual(self, session: "DBSession", rule: AccrualConfig):
+    def process_accrual(self, session: Session, rule: AccrualConfig):
         logging.info("Calculating accruals for rule %s", rule.metadata_key)
         settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         provisional_liabilities = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key,
@@ -84,7 +84,7 @@ class AccrualsPoster(BasePoster):
                                              metadata={}, group_id=settlement.key)
                 settlement_transactions.append(tx)
 
-        self.ledger_service.create_or_update_simple_transactions(settlement_transactions)
+        self.ledger_service.create_or_update_simple_transactions(session, settlement_transactions)
 
         settlements = LedgerService.find_all_by_metadata_by_date_desc(session, rule.metadata_key, VALUE_SETTLEMENT)
         if not settlements:
@@ -135,7 +135,7 @@ class AccrualsPoster(BasePoster):
         if delete_tx_keys:
             logging.warning("%s: deleting transactions: %s", rule.name, delete_tx_keys)
 
-        self.ledger_service.create_or_update_simple_transactions(provisional_transactions)
+        self.ledger_service.create_or_update_simple_transactions(session, provisional_transactions)
         self.ledger_service.delete_transactions_by_key(session, list(delete_tx_keys))
 
 def split_money_decimal(total_amount, n):

@@ -1,7 +1,8 @@
 from operator import abs
 
+from sqlalchemy.orm import Session
+
 import dependencies
-from db import DBSession
 from importer.import_service import GcImportIntegrationDto, ImportService, GcImportRuleDto
 from model import *
 
@@ -16,16 +17,16 @@ class SantanderPoster(BasePoster):
 
     def __init__(self, config: GcImportIntegrationDto):
         self.import_config = config
-        with DBSession.begin() as session:
-            self.import_rules = ImportService.get_gc_import_rules(session, config.id)
+        self.import_rules = []
 
-    def run(self):
+    def run(self, session: Session):
+        self.import_rules = ImportService.get_gc_import_rules(session, self.import_config.id)
         santander_transactions = dependencies.get_transactions_store().load(SANTANDER_TX_FILE, SantanderTransactions).transactions
         mapped_transactions = [self.translate_to_ledger(from_gc(tx)) for tx in santander_transactions]
         ledger_transactions = [tx for tx in mapped_transactions if tx]
         logging.info("writing santander to db")
         ledger_service = dependencies.get_ledger_service()
-        new_txs = ledger_service.create_or_update_simple_transactions(ledger_transactions)
+        new_txs = ledger_service.create_or_update_simple_transactions(session, ledger_transactions)
         [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
 
     def translate_to_ledger(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:

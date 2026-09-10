@@ -244,7 +244,6 @@ class LedgerRepo:
         new_ids_q = select(Transaction.id).where(Transaction.key.in_(new_keys))
         new_ids = session.execute(new_ids_q).scalars().all()
 
-        logging.info("upsert result: {}".format(new_ids))
         return {row.key: row.id for row in result}, list(new_ids)
 
     @staticmethod
