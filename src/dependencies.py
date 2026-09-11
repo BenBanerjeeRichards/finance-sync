@@ -1,4 +1,3 @@
-import os
 from functools import lru_cache
 import minio
 import pika
@@ -9,10 +8,9 @@ from gocardless.gc_connection import GcConnection
 from gocardless.gocardless import GoCardlessClient
 from importer.import_service import ImportService
 from importer.santander_import import SantanderImporter
-from ledger.account_alert_service import AccountAlertService
 from ledger.ledger_service import LedgerService
 from model import Config, Settings
-from monzo import MonzoClient
+from importer.monzo import MonzoClient
 from notification.discord import DiscordClient
 from notification.notification_repo import NotificationRepo
 from notification.notification_service import NotificationService
@@ -20,26 +18,7 @@ from storage import Store
 
 
 def get_settings() -> Settings:
-    rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]
-    # HACK: default rmq operator secret uses 3 dots, (rabbitmq.default.svc), but this fails to resolve with low values of
-    # ndots (required for resolution of over domains...). So repace with fully higher number of dots rabbitmq.default.svc.cluster.local
-    if ".svc" in rmq_connection_string and ".cluster.local" not in rmq_connection_string:
-        rmq_connection_string = rmq_connection_string.replace(".svc", ".svc.cluster.local")
-
-    return Settings(
-        monzo_account_id=os.environ["MONZO_ACCOUNT_ID"],
-        monzo_client_id=os.environ["MONZO_CLIENT_ID"],
-        monzo_client_secret=os.environ["MONZO_CLIENT_SECRET"],
-        rabbitmq_connection_string=rmq_connection_string,
-        minio_endpoint=os.environ["MINIO_ENDPOINT"],
-        minio_access=os.environ["MINIO_ACCESS"],
-        minio_secret=os.environ["MINIO_SECRET"],
-        minio_secure=os.environ["MINIO_SECURE"] != "false",
-        config_path=os.environ["CONFIG_PATH"],
-        gc_secret_id=os.environ["GC_SECRET_ID"],
-        gc_secret_key=os.environ["GC_SECRET_KEY"],
-        santander_discord_webhook=os.environ["SANTANDER_DISCORD_WEBHOOK"]
-    )
+    return Settings()
 
 
 @lru_cache
@@ -113,7 +92,6 @@ def get_gc_connection() -> GcConnection:
         store=get_transactions_store(),
         config=get_config(),
     )
-
 
 
 def get_santander_importer() -> SantanderImporter:

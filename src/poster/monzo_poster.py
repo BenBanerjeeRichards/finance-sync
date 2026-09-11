@@ -34,7 +34,7 @@ class MonzoPoster(BasePoster):
         ledger_service = dependencies.get_ledger_service()
         logging.info("writing monzo to db (%s)", len(ledger_transactions))
         new_txs = ledger_service.create_or_update_simple_transactions(session, ledger_transactions)
-        [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
+        [ledger_service.publish_new_card_transaction_event(session, t) for t in new_txs]
 
 
     def translate_to_ledger(self, tx: MonzoTransaction) -> SimpleLedgerTransaction:

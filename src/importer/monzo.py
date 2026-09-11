@@ -4,7 +4,6 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Tuple, Callable
 import time
-import os
 
 
 MONZO_BASE = "https://api.monzo.com"

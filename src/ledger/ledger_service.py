@@ -14,7 +14,6 @@ from ledger.dto import TransactionDto, TransactionListDto, TransactionListResult
     PeriodicBalancesDto, CreateTransactionDto, AccountType
 from ledger.model import Transaction, Entry, Account, AccountType as ModelAccountType
 from ledger.repo import LedgerRepo, TransactionFilters, ListTransactionCursor
-from db import DBSession
 from model import Config, SimpleLedgerTransaction
 import logging
 
@@ -224,10 +223,9 @@ class LedgerService:
         external_id_items = f"{date_str}-{payee}-{narration}-{amount_str}"
         return hashlib.md5(external_id_items.encode("utf-8")).hexdigest()
 
-    def publish_new_card_transaction_event(self, tx_id: uuid.UUID):
+    def publish_new_card_transaction_event(self, session: Session, tx_id: uuid.UUID):
         logging.info("publishing card-transaction.created event %s", tx_id)
-        with DBSession.begin() as session:
-            tx = self.get_transaction(session, tx_id)
+        tx = self.get_transaction(session, tx_id)
         assert tx
         ch = self.rmq_connection.channel()
         ch.basic_publish(EXCHANGE_CARD_TRANSACTION_CREATED, "", tx.model_dump_json())

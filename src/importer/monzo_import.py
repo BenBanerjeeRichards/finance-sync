@@ -5,7 +5,7 @@ from model import Config, Transaction, Merchant, Counterparty, Tab, Attachment, 
 import re
 import datetime
 
-from monzo import MonzoClient
+from importer.monzo import MonzoClient
 from storage import Store, MONZO_TX_FILE
 
 

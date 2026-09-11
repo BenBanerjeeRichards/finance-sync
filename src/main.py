@@ -2,8 +2,6 @@ import asyncio
 import signal
 
 import uvicorn
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from constants import EXCHANGE_LEDGER_UPDATED, EXCHANGE_CARD_TRANSACTION_CREATED
 from model import Settings
@@ -19,29 +17,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 # logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
-
-
-def load_settings() -> Settings:
-    rmq_connection_string = os.environ["RABBITMQ_CONNECTION_STRING"]
-    # HACK: default rmq operator secret uses 3 dots, (rabbitmq.default.svc), but this fails to resolve with low values of
-    # ndots (required for resolution of over domains...). So repace with fully higher number of dots rabbitmq.default.svc.cluster.local
-    if ".svc" in rmq_connection_string and ".cluster.local" not in rmq_connection_string:
-        rmq_connection_string = rmq_connection_string.replace(".svc", ".svc.cluster.local")
-
-    return Settings(
-        monzo_account_id=os.environ["MONZO_ACCOUNT_ID"],
-        monzo_client_id=os.environ["MONZO_CLIENT_ID"],
-        monzo_client_secret=os.environ["MONZO_CLIENT_SECRET"],
-        rabbitmq_connection_string=rmq_connection_string,
-        minio_endpoint=os.environ["MINIO_ENDPOINT"],
-        minio_access=os.environ["MINIO_ACCESS"],
-        minio_secret=os.environ["MINIO_SECRET"],
-        minio_secure=os.environ["MINIO_SECURE"] != "false",
-        config_path=os.environ["CONFIG_PATH"],
-        gc_secret_id=os.environ["GC_SECRET_ID"],
-        gc_secret_key=os.environ["GC_SECRET_KEY"],
-        santander_discord_webhook=os.environ["SANTANDER_DISCORD_WEBHOOK"]
-    )
 
 
 def listen_for_updates(channel, handler: "Handler"):
@@ -134,8 +109,6 @@ def main():
 
     p1.join()
     p2.join()
-
-    engine.dispose()
 
 
 if __name__ == "__main__":

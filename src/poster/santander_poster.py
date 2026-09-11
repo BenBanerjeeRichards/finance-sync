@@ -9,7 +9,7 @@ from model import *
 import logging
 
 from poster.base_poster import BasePoster
-from santander import SantanderTransaction, from_gc
+from importer.santander import SantanderTransaction, from_gc
 from storage import SANTANDER_TX_FILE
 
 
@@ -27,7 +27,7 @@ class SantanderPoster(BasePoster):
         logging.info("writing santander to db")
         ledger_service = dependencies.get_ledger_service()
         new_txs = ledger_service.create_or_update_simple_transactions(session, ledger_transactions)
-        [ledger_service.publish_new_card_transaction_event(t) for t in new_txs]
+        [ledger_service.publish_new_card_transaction_event(session, t) for t in new_txs]
 
     def translate_to_ledger(self, tx: SantanderTransaction) -> SimpleLedgerTransaction | None:
         cash_account = self.import_config.cash_account_id

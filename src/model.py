@@ -5,6 +5,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ledger.dto import TransactionDto, EntryDto, AccountDto
 
@@ -75,7 +76,7 @@ class GcStore(BaseModel):
     account_id: str
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     monzo_client_id: str
     monzo_client_secret: str
     monzo_account_id: str
@@ -88,6 +89,18 @@ class Settings(BaseModel):
     gc_secret_id: str
     gc_secret_key: str
     santander_discord_webhook: str
+
+    model_config = SettingsConfigDict(
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    @field_validator("minio_secure", mode="before")
+    @classmethod
+    def parse_minio_secure(cls, v: str | bool) -> bool:
+        if isinstance(v, str):
+            return v.lower() != "false"
+        return v
 
 
 class GcSantanderTransaction(BaseModel):
