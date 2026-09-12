@@ -4,7 +4,6 @@ import signal
 import uvicorn
 
 from constants import EXCHANGE_LEDGER_UPDATED, EXCHANGE_CARD_TRANSACTION_CREATED
-from model import Settings
 import os
 import logging
 import dependencies
@@ -16,8 +15,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
-# logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
-
 
 def listen_for_updates(channel, handler: "Handler"):
     # Wire everything up...not massivly sustainable but ok for something small

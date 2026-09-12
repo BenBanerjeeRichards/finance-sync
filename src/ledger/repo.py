@@ -3,8 +3,9 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
+import sqlalchemy
 from pydantic import BaseModel
-from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect, literal_column, update
+from sqlalchemy import select, delete, tuple_, or_, func, desc, Select, inspect, literal_column, update, values, column
 from sqlalchemy.dialects.postgresql import insert  # need postgres version for on_conflict
 from sqlalchemy.orm import Session, defer
 import logging
@@ -275,8 +276,20 @@ class LedgerRepo:
         if diff:
             logging.error("invalid args: %s", diff)
             assert len(diff) == 0
-        cleanup = delete(Entry).where(Entry.transaction_id.in_(transaction_ids)).where(
-            tuple_(Entry.transaction_id, Entry.account_id).not_in(tx_acc_ids))
+
+        valid_pairs = values(
+            column("tx_id", sqlalchemy.UUID),
+            column("acc_id", sqlalchemy.UUID),
+            name="valid_pairs"
+        ).data(tx_acc_ids)
+        cleanup = delete(Entry).where(
+            Entry.transaction_id.in_(transaction_ids),
+            ~select(1).where(
+                valid_pairs.c.tx_id == Entry.transaction_id,
+                valid_pairs.c.acc_id == Entry.account_id
+            ).exists()
+        )
+
         res = session.execute(cleanup)
         if res.rowcount > 0:
             logging.info("cleanup cleaned %s ledger entries", res.rowcount)

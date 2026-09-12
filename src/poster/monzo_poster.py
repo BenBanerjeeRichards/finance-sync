@@ -3,6 +3,7 @@ import logging
 from sqlalchemy.orm import Session
 
 import dependencies
+from importer.import_service import MonzoImportIntegrationDto, MonzoImportRuleDto
 from poster.base_poster import BasePoster
 from model import *
 from model import Transaction as MonzoTransaction
@@ -14,7 +15,6 @@ def create_amount(pence: int) -> Decimal:
 
 
 class MonzoPoster(BasePoster):
-    from importer.import_service import  MonzoImportRuleDto, MonzoImportIntegrationDto
 
     """
     Translates monzo translations to Beancount ledger postings
